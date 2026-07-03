@@ -73,6 +73,22 @@ def setup_portaudio_path():
     if assets_dir.exists():
         os.environ['PATH'] = str(assets_dir) + os.pathsep + os.environ.get('PATH', '')
 
+def setup_nvidia_dll_paths():
+    # The NVIDIA pip wheels (nvidia-cublas-cu12, nvidia-cudnn-cu12, ...) put their
+    # DLLs in site-packages/nvidia/<pkg>/bin, which is not on the loader search
+    # path. CTranslate2 only registers its own package dir, so without this the
+    # first CUDA call fails (or hangs) trying to load cublas64_12.dll / cudnn64_9.dll.
+    if sys.platform != 'win32':
+        return
+    import site
+    for sp in site.getsitepackages():
+        nvidia_dir = Path(sp) / 'nvidia'
+        if not nvidia_dir.is_dir():
+            continue
+        for bin_dir in nvidia_dir.glob('*/bin'):
+            if bin_dir.is_dir():
+                os.environ['PATH'] = str(bin_dir) + os.pathsep + os.environ.get('PATH', '')
+
 def restart_or_exit(message_restart, message_exit):
     pyapp_exe = os.environ.get('PYAPP', '')
     if os.path.isfile(pyapp_exe):
