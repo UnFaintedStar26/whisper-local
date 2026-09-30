@@ -200,12 +200,14 @@
     transition: opacity .15s, transform .2s var(--ease), color .15s, border-color .15s;
   }
   .copy svg { width: 14px; height: 14px; }
-  .entry:hover .copy, .entry:focus-within .copy, .entry.is-selected .copy, .copy.done { opacity: 1; transform: none; }
-  .entry.is-selected .copy:not(.done)::after {
+  .entry:hover .copy, .entry:focus-within .copy, .entry.is-selected .copy,
+  .copy.done, .copy.failed { opacity: 1; transform: none; }
+  .entry.is-selected .copy:not(.done):not(.failed)::after {
     content: "↵"; margin-left: 2px; font: 12px var(--font-mono); color: var(--muted);
   }
   .copy:hover { color: var(--text); border-color: var(--faint); }
   .copy.done { color: var(--live); border-color: currentColor; }
+  .copy.failed { color: var(--accent); border-color: currentColor; }
 
   .entry.is-new { animation: arrive 1.8s var(--ease); }
   .entry.is-new .time { color: var(--accent); }
@@ -244,8 +246,32 @@
   .status[data-tone^="error"] { color: var(--accent); }
   .count { font-variant-numeric: tabular-nums; }
 
+  /* ── feed stage: scroller + floating "N new ↑" cue ──
+     z-index scale: 1 sticky day headers, 2 the floating cue. */
+  .stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .new-pill {
+    position: absolute; top: 10px; left: 50%; z-index: 2;
+    transform: translateX(-50%);
+    border: 0; border-radius: 999px; padding: 5px 12px;
+    background: var(--text); color: var(--bg);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+    animation: pill-in .2s var(--ease);
+    transition: background .15s;
+  }
+  .new-pill[hidden] { display: none; }
+  .new-pill:hover { background: var(--muted); }
+  .new-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @keyframes pill-in { from { opacity: 0; transform: translate(-50%, -6px); } }
+
+  /* Screen-reader-only announcements (match counts, copy results, connection state). */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    *, *::before { animation: none !important; transition: none !important; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
   }
   @media (max-width: 600px) {
     header { padding: 16px 16px 0; }
@@ -269,9 +295,12 @@
     </label>
     <nav class="chips" id="chips" aria-label="Filter by app"></nav>
   </header>
-  <main id="scroller">
-    <div class="feed" id="feed" aria-live="polite"></div>
-  </main>
+  <div class="stage">
+    <main id="scroller">
+      <div class="feed" id="feed"></div>
+    </main>
+    <button class="new-pill" id="newPill" type="button" hidden></button>
+  </div>
   <footer class="bar">
     <ul class="keys" aria-label="Keyboard shortcuts">
       <li><kbd>↑↓</kbd>move</li>
@@ -279,9 +308,10 @@
       <li><kbd>⇧Enter</kbd>copy &amp; close</li>
       <li><kbd>Esc</kbd>clear / close</li>
     </ul>
-    <span class="status" id="status" role="status"></span>
+    <span class="status" id="status"></span>
     <span class="count" id="count"></span>
   </footer>
+  <div class="sr-only" id="sr" role="status"></div>
 </div>
 
 <script>
@@ -290,12 +320,15 @@
   const CLAMP_CHARS = 420;
   const MAX_APP_CHIPS = 4;
   const STATUS_MS = 1600;   // how long "Copied" feedback stays up
+  const PAUSE_AFTER_FAILURES = 3;  // failed polls in a row before we say "Paused"
+  const NEAR_TOP_PX = 40;   // within this of the top, new arrivals are visible; no cue needed
   const ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+  const ICON_ALERT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
 
   const $ = id => document.getElementById(id);
   const q = $('q'), feed = $('feed'), chips = $('chips'), scroller = $('scroller');
-  const statusEl = $('status'), countEl = $('count');
+  const statusEl = $('status'), countEl = $('count'), srEl = $('sr'), pill = $('newPill');
 
   let entries = [];
   let sig = '';
@@ -308,13 +341,21 @@
   // arrowed to; null means "follow the newest match", so fresh dictations take the selection.
   let shown = [], rows = [];
   let selKey = null;
+  let selectedRow = null;
+
+  // Rendered elements are reused across renders so focus and scroll position survive
+  // polls and keystrokes. ponytail: day headers are never pruned (a handful per 2000 entries).
+  const rowCache = new Map();   // entry key -> <article>
+  const dayCache = new Map();   // day label -> { el, count }
+  let unseenNew = 0;            // arrivals since the reader scrolled away from the top
+  let pollFailures = 0;
 
   const keyOf = e => `${e.timestamp}|${e.text}`;
   const exeKey = e => (e.app || '').toLowerCase().replace(/\.exe$/, '');
   const slug = s => s.toLowerCase().replace(/[\s._-]+/g, '');
   const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const words = t => (t.trim().match(/\S+/g) || []).length;
-  const plural = (n, noun) => `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`;
+  const plural = (n, noun, nouns = noun + 's') => `${n.toLocaleString()} ${n === 1 ? noun : nouns}`;
 
   // ── app names ──
   // Entries carry the real app name recorded at dictation time ("Claude Code", not "claude").
@@ -418,13 +459,19 @@
     return d;
   }
 
-  function renderEntry(e, terms, isNew) {
+  // ── rows ──
+  // Built once per entry. `row.update()` refreshes only what can change (search highlights,
+  // clamping, app label), so the element and any focus inside it survive re-renders.
+  function createRow(e, isNew) {
     const d = parseTs(e.timestamp);
     const text = e.text || '';
     const key = keyOf(e);
+    const long = text.length > CLAMP_CHARS;
 
     const row = document.createElement('article');
     row.className = 'entry' + (isNew ? ' is-new' : '');
+    // Drop the arrival class once played, or re-inserting the row (filter off/on) replays it.
+    row.addEventListener('animationend', () => row.classList.remove('is-new'), { once: true });
 
     const time = document.createElement('div');
     time.className = 'time';
@@ -433,14 +480,11 @@
     const body = document.createElement('div');
     const p = document.createElement('p');
     p.className = 'text';
-    appendHighlighted(p, text, terms);
-    const long = text.length > CLAMP_CHARS && !terms.length;
-    if (long && !expanded.has(key)) p.classList.add('clamped');
 
     const meta = document.createElement('div');
     meta.className = 'meta';
     const tag = document.createElement('span');
-    tag.className = 'app-tag'; tag.textContent = e.label;
+    tag.className = 'app-tag';
     meta.append(tag);
     const facts = [plural(words(text), 'word')];
     if (e.duration_s) facts.push(`${(+e.duration_s).toFixed(1)}s`);
@@ -449,8 +493,9 @@
       const s = document.createElement('span'); s.textContent = f;
       meta.append(dot, s);
     });
+    let more = null;
     if (long) {
-      const more = document.createElement('button');
+      more = document.createElement('button');
       more.className = 'more';
       const sync = () => { more.textContent = expanded.has(key) ? 'Show less' : 'Show more'; };
       sync();
@@ -472,39 +517,93 @@
     // Clicking a row selects it, so mouse and keyboard agree on what Enter copies.
     row.addEventListener('click', () => { selKey = key; paintSelection(false); });
 
+    let lastTerms = null;
+    row.update = (label, terms) => {
+      if (tag.textContent !== label) tag.textContent = label;
+      const termsKey = terms.join(' ');
+      if (termsKey === lastTerms) return;
+      lastTerms = termsKey;
+      p.textContent = '';
+      appendHighlighted(p, text, terms);
+      // Long entries clamp to 5 lines, except while searching so every hit is visible.
+      p.classList.toggle('clamped', long && !terms.length && !expanded.has(key));
+      if (more) more.hidden = terms.length > 0;
+    };
+
     row.append(time, body, copy);
     return row;
   }
 
-  // Copies `text` and flips `btn` to its "Copied" state for a moment. Returns false on failure.
+  function dayHeader(label) {
+    let day = dayCache.get(label);
+    if (!day) {
+      const el = document.createElement('h2');
+      el.className = 'day';
+      el.textContent = label;
+      const count = document.createElement('em');
+      el.append(count);
+      day = { el, count };
+      dayCache.set(label, day);
+    }
+    return day;
+  }
+
+  // Makes `parent`'s children exactly `nodes`. Rows only ever drop out or appear in date
+  // order, so after removals every survivor is already in place and nothing moves;
+  // moving a node would blur whatever is focused inside it.
+  function patchChildren(parent, nodes) {
+    const keep = new Set(nodes);
+    [...parent.children].forEach(c => { if (!keep.has(c)) c.remove(); });
+    nodes.forEach((n, i) => { if (parent.children[i] !== n) parent.insertBefore(n, parent.children[i] || null); });
+  }
+
+  // ── copy ──
+  // Copies `text` and reports the result on the button, in the footer and to screen
+  // readers. Returns false on failure.
   async function copyText(btn, text) {
+    let ok = true;
     try {
       await window.pywebview.api.copy(text);
     } catch (err) {
       console.error(err);
-      setStatus("Couldn't copy. Try again.", 'error', STATUS_MS * 2);
-      return false;
+      ok = false;
     }
-    setStatus('Copied to clipboard', 'ok', STATUS_MS);
-    btn.classList.add('done');
-    btn.innerHTML = ICON_CHECK + '<span>Copied</span>';
-    clearTimeout(btn._t);
-    btn._t = setTimeout(() => {
-      btn.classList.remove('done');
-      btn.innerHTML = ICON_COPY + '<span>Copy</span>';
-    }, STATUS_MS);
-    return true;
+    flashCopyButton(btn, ok);
+    if (ok) {
+      setStatus('Copied to clipboard', 'ok', STATUS_MS);
+      announce('Copied');
+    } else {
+      setStatus("Couldn't copy. Try again.", 'error', STATUS_MS * 2);
+      announce('Copy failed');
+    }
+    return ok;
   }
 
-  // ── footer status + count ──
-  // Status is empty when all is well; it speaks up for copies and read errors.
-  // role="status" makes screen readers announce each message too.
+  function flashCopyButton(btn, ok) {
+    btn.classList.remove('done', 'failed');
+    btn.classList.add(ok ? 'done' : 'failed');
+    btn.innerHTML = ok ? ICON_CHECK + '<span>Copied</span>' : ICON_ALERT + '<span>Copy failed</span>';
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => {
+      btn.classList.remove('done', 'failed');
+      btn.innerHTML = ICON_COPY + '<span>Copy</span>';
+    }, ok ? STATUS_MS : STATUS_MS * 2);
+  }
+
+  // ── footer status, count, announcements ──
+  // The visible status slot is empty when all is well. Transient messages fall back to the
+  // resting state, which is "Paused" while the journal can't be read.
   let statusTimer;
+  const isPaused = () => pollFailures >= PAUSE_AFTER_FAILURES;
   function setStatus(text, tone, clearAfterMs) {
     clearTimeout(statusTimer);
     statusEl.textContent = text;
     statusEl.dataset.tone = tone || '';
-    if (clearAfterMs) statusTimer = setTimeout(() => setStatus(''), clearAfterMs);
+    if (clearAfterMs) statusTimer = setTimeout(showRestingStatus, clearAfterMs);
+  }
+  function showRestingStatus() {
+    if (isPaused()) setStatus('Paused, reconnecting…', 'error');
+    else setStatus('');
   }
   function renderCount(isFiltered) {
     const total = entries.length;
@@ -512,6 +611,30 @@
       : isFiltered ? `${shown.length.toLocaleString()} of ${plural(total, 'dictation')}`
       : plural(total, 'dictation');
   }
+
+  // Screen-reader-only line. Cleared first so a repeated message ("Copied") is read again.
+  let announceTimer;
+  function announce(text) {
+    srEl.textContent = '';
+    clearTimeout(announceTimer);
+    announceTimer = setTimeout(() => { srEl.textContent = text; }, 60);
+  }
+
+  // ── "N new ↑" cue ──
+  function renderPill() {
+    pill.hidden = !unseenNew;
+    pill.textContent = `${unseenNew.toLocaleString()} new ↑`;
+    pill.setAttribute('aria-label', `${plural(unseenNew, 'new dictation')}. Jump to top`);
+  }
+  pill.addEventListener('click', () => {
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scroller.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+    unseenNew = 0; renderPill();
+    q.focus();
+  });
+  scroller.addEventListener('scroll', () => {
+    if (unseenNew && scroller.scrollTop <= NEAR_TOP_PX) { unseenNew = 0; renderPill(); }
+  }, { passive: true });
 
   // First-run hint naming the real hotkey: "Hold [Ctrl] + [Alt] and start talking…".
   function firstRunHint() {
@@ -528,6 +651,7 @@
     return parts;
   }
 
+  // ── selection ──
   // Index of the selected entry in `shown`; falls back to the newest match.
   function selIndex() {
     const i = selKey === null ? -1 : shown.findIndex(e => keyOf(e) === selKey);
@@ -536,11 +660,12 @@
 
   // Marks the selected row; `reveal` scrolls it into view (keyboard moves only, never on poll).
   function paintSelection(reveal) {
-    feed.querySelector('.is-selected')?.classList.remove('is-selected');
-    const i = selIndex(), row = rows[i];
-    if (!row) return;
-    row.classList.add('is-selected');
-    if (reveal) i === 0 ? (scroller.scrollTop = 0) : row.scrollIntoView({ block: 'nearest' });
+    selectedRow?.classList.remove('is-selected');
+    const i = selIndex();
+    selectedRow = rows[i] || null;
+    if (!selectedRow) return;
+    selectedRow.classList.add('is-selected');
+    if (reveal) i === 0 ? (scroller.scrollTop = 0) : selectedRow.scrollIntoView({ block: 'nearest' });
   }
 
   function moveSelection(delta) {
@@ -556,9 +681,11 @@
     if (await copyText(row.querySelector('.copy'), shown[i].text || '') && andClose) window.pywebview.api.close();
   }
 
-  // Re-renders for a new query, starting again from the newest match at the top.
+  // ── query ──
+  // Re-renders for a new query from the newest match, and tells screen readers the result.
   function refresh() {
     selKey = null; scroller.scrollTop = 0; renderFeed();
+    if (q.value.trim()) announce(shown.length ? plural(shown.length, 'match', 'matches') : 'No matches');
   }
   function setQuery(value) {
     clearTimeout(searchTimer);
@@ -575,65 +702,77 @@
     q.focus();
   }
 
+  // ── feed ──
+  // Reconciles the list in place. New rows landing above the reader are held in view by the
+  // browser's scroll anchoring; if the reader is scrolled away, the "N new ↑" cue counts them.
   function renderFeed() {
     const { app, terms } = parseQuery(q.value);
     renderChips(app, terms);
     shown = entries.filter(e => matchesApp(e, app) && matchesTerms(e, terms));
-    rows = [];
 
-    // Keep the reader's place when new entries land above them.
-    const anchorOffset = scroller.scrollTop > 4 ? scroller.scrollHeight - scroller.scrollTop : null;
-
-    const frag = document.createDocumentFragment();
+    const nodes = [];
     if (!entries.length) {
-      frag.append(emptyState('No dictations yet', firstRunHint()));
+      nodes.push(emptyState('No dictations yet', firstRunHint()));
     } else if (!shown.length) {
       const where = app ? ` in app:${app}` : '';
-      frag.append(emptyState('No matches', terms.length
+      nodes.push(emptyState('No matches', terms.length
         ? `Nothing${where} contains ${terms.length > 1 ? 'all of ' : ''}“${terms.join(' ')}”.`
         : `No app matches “${app}”.`));
     }
 
-    let currentDay = '', dayCount = null;
-    shown.forEach(e => {
+    let currentLabel = null, day = null, dayN = 0, arrived = 0;
+    rows = shown.map(e => {
       const d = parseTs(e.timestamp);
       const label = d ? dayLabel(d) : 'Undated';
-      if (label !== currentDay) {
-        currentDay = label;
-        const h = document.createElement('h2');
-        h.className = 'day';
-        h.textContent = label;
-        dayCount = document.createElement('em');
-        dayCount.dataset.n = '0';
-        h.append(dayCount);
-        frag.append(h);
+      if (label !== currentLabel) {
+        if (day) day.count.textContent = dayN;
+        currentLabel = label; day = dayHeader(label); dayN = 0;
+        nodes.push(day.el);
       }
-      dayCount.dataset.n = +dayCount.dataset.n + 1;
-      dayCount.textContent = dayCount.dataset.n;
-      const row = renderEntry(e, terms, seen !== null && !seen.has(keyOf(e)));
-      rows.push(row);
-      frag.append(row);
+      dayN++;
+      const key = keyOf(e);
+      let row = rowCache.get(key);
+      if (!row) {
+        const isNew = seen !== null && !seen.has(key);
+        if (isNew) arrived++;
+        row = createRow(e, isNew);
+        rowCache.set(key, row);
+      }
+      row.update(e.label, terms);
+      nodes.push(row);
+      return row;
     });
+    if (day) day.count.textContent = dayN;
 
-    feed.replaceChildren(frag);
+    const hadFocus = feed.contains(document.activeElement);
+    patchChildren(feed, nodes);
+    if (hadFocus && !feed.contains(document.activeElement)) q.focus();  // its row was filtered out
+
     renderCount(Boolean(app || terms.length));
     paintSelection(false);
-    if (anchorOffset !== null) scroller.scrollTop = scroller.scrollHeight - anchorOffset;
+    if (arrived && scroller.scrollTop > NEAR_TOP_PX) { unseenNew += arrived; renderPill(); }
     seen = new Set(entries.map(keyOf));
   }
 
+  // ── polling ──
+  // A blip is silent; PAUSE_AFTER_FAILURES misses in a row show "Paused, reconnecting…".
   async function poll() {
     try {
       const res = await window.pywebview.api.poll(sig);
-      if (statusEl.dataset.tone === 'error-read') setStatus('');
+      const wasPaused = isPaused();
+      pollFailures = 0;
+      if (wasPaused) { showRestingStatus(); announce('Reconnected'); }
       if (res) {
         sig = res.sig;
         entries = withLabels(res.entries || []);
+        const live = new Set(entries.map(keyOf));
+        for (const k of rowCache.keys()) if (!live.has(k)) rowCache.delete(k);  // rotated out
         renderFeed();
       }
     } catch (err) {
       console.error(err);
-      setStatus("Can't read transcripts. Retrying…", 'error-read');
+      pollFailures++;
+      if (pollFailures === PAUSE_AFTER_FAILURES) { showRestingStatus(); announce('Paused, reconnecting'); }
     } finally {
       setTimeout(poll, POLL_MS);
     }

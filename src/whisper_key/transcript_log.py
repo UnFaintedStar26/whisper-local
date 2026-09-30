@@ -56,26 +56,25 @@ def record_transcript(text: str, app: str = '', duration_s: float = 0.0, app_nam
 
 # Reads the journal back into a list of dicts, newest-first. Used by the
 # history window. Silently skips malformed lines so a single corrupted entry
-# doesn't break the whole UI.
+# doesn't break the whole UI, but lets I/O errors (e.g. the file is locked)
+# propagate: returning [] would make the window claim there is no history,
+# while an error lets it say "Paused, reconnecting" and keep what it shows.
 def load_transcripts() -> list:
     path = transcript_log_path()
     entries = []
     if not path.exists():
         return entries
-    try:
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if obj.get('text'):
-                        entries.append(obj)
-                except json.JSONDecodeError:
-                    pass
-    except Exception as e:
-        logger.warning(f"Failed to load transcripts: {e}")
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if obj.get('text'):
+                    entries.append(obj)
+            except json.JSONDecodeError:
+                pass
     return list(reversed(entries))
 
 

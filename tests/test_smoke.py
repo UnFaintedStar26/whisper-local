@@ -400,6 +400,23 @@ class TranscriptLogTests(unittest.TestCase):
                 entries = transcript_log.load_transcripts()
         self.assertEqual(len(entries), 0)
 
+    def test_unreadable_journal_raises_instead_of_looking_empty(self):
+        import tempfile
+        import unittest.mock as mock
+        from whisper_key import transcript_log
+        from whisper_key.history_window import Api
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch('whisper_key.transcript_log.get_user_app_data_path', return_value=tmpdir):
+                transcript_log.record_transcript("Hello world", app="test.exe")
+                api = Api(transcript_log.transcript_log_path())
+                with mock.patch('builtins.open', side_effect=PermissionError('locked')):
+                    with self.assertRaises(PermissionError):
+                        api.poll('')
+                # Malformed lines are still skipped, not fatal.
+                with open(transcript_log.transcript_log_path(), 'a', encoding='utf-8') as f:
+                    f.write('{not json\n')
+                self.assertEqual([e['text'] for e in transcript_log.load_transcripts()], ["Hello world"])
+
 
 class SettingsUiModuleTests(unittest.TestCase):
     def test_module_importable(self):
