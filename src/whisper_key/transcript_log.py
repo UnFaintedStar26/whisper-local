@@ -31,13 +31,15 @@ def transcript_log_path() -> Path:
 
 # Called from state_manager._transcription_pipeline after every successful
 # delivery. Silent no-op for empty text (which means a failed/silent recording).
-def record_transcript(text: str, app: str = '', duration_s: float = 0.0):
+# `app` is the exe / bundle id (stable key); `app_name` is what the user calls it.
+def record_transcript(text: str, app: str = '', duration_s: float = 0.0, app_name: str = ''):
     if not text:
         return
     entry = {
         'timestamp': datetime.datetime.now().isoformat(timespec='seconds'),
         'text': text,
         'app': app,
+        'app_name': app_name,
         'duration_s': round(duration_s, 2),
         'chars': len(text),
     }

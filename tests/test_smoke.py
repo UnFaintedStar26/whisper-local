@@ -376,11 +376,19 @@ class TranscriptLogTests(unittest.TestCase):
         from whisper_key import transcript_log
         with tempfile.TemporaryDirectory() as tmpdir:
             with mock.patch('whisper_key.transcript_log.get_user_app_data_path', return_value=tmpdir):
-                transcript_log.record_transcript("Hello world", app="test.exe", duration_s=1.5)
+                transcript_log.record_transcript("Hello world", app="test.exe", duration_s=1.5, app_name="Test App")
                 entries = transcript_log.load_transcripts()
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["text"], "Hello world")
         self.assertEqual(entries[0]["app"], "test.exe")
+        self.assertEqual(entries[0]["app_name"], "Test App")
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows version-info naming')
+    def test_app_display_name_prefers_real_product_name(self):
+        from whisper_key.platform.windows.foreground import pick_display_name
+        self.assertEqual(pick_display_name('Windows Terminal Host', 'Windows Terminal', ''), 'Windows Terminal')
+        self.assertEqual(pick_display_name('Microsoft Word', 'Microsoft Office', ''), 'Microsoft Word')
+        self.assertEqual(pick_display_name('', '', 'tool.exe'), 'tool')
 
     def test_empty_text_not_logged(self):
         import tempfile

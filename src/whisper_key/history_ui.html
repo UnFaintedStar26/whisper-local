@@ -57,32 +57,15 @@
 
   /* ── header ── */
   header {
-    padding: 22px 28px 0;
+    padding: 18px 28px 0;
     border-bottom: 1px solid var(--line);
     background: var(--bg);
   }
-  .title-row { display: flex; align-items: baseline; gap: 14px; }
   h1 {
-    margin: 0;
+    margin: 0 0 12px;
     font: 600 26px/1.15 var(--font-display);
     letter-spacing: -.01em;
   }
-  .live {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 12px; color: var(--muted);
-  }
-  .live::before {
-    content: ""; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--live);
-    box-shadow: 0 0 0 0 var(--live);
-    animation: pulse 2.4s var(--ease) infinite;
-  }
-  @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); }
-    70%, 100% { box-shadow: 0 0 0 7px transparent; }
-  }
-  .stats { margin: 6px 0 16px; color: var(--muted); font-size: 12px; }
-  .stats b { color: var(--text); font-weight: 600; }
 
   .search {
     position: relative;
@@ -265,11 +248,7 @@
 <body>
 <div class="app">
   <header>
-    <div class="title-row">
-      <h1>Transcripts</h1>
-      <span class="live" title="New dictations appear automatically">Live</span>
-    </div>
-    <div class="stats" id="stats">Loading…</div>
+    <h1>Transcripts</h1>
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search everything you've said" autocomplete="off" spellcheck="false" aria-label="Search transcripts" autofocus>
@@ -292,22 +271,16 @@
 (() => {
   const POLL_MS = 1000;
   const CLAMP_CHARS = 420;
-  const APP_NAMES = {
-    windowsterminal: 'Terminal', chatgpt: 'ChatGPT', claude: 'Claude', firefox: 'Firefox',
-    notepad: 'Notepad', code: 'VS Code', msedge: 'Edge', chrome: 'Chrome', brave: 'Brave',
-    discord: 'Discord', slack: 'Slack', obsidian: 'Obsidian', explorer: 'Explorer',
-    winword: 'Word', outlook: 'Outlook', teams: 'Teams', 'ms-teams': 'Teams',
-  };
+  const MAX_APP_CHIPS = 4;
   const ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
 
   const $ = id => document.getElementById(id);
-  const q = $('q'), feed = $('feed'), chips = $('chips'), stats = $('stats'), scroller = $('scroller');
+  const q = $('q'), feed = $('feed'), chips = $('chips'), scroller = $('scroller');
 
   let entries = [];
   let sig = '';
   let seen = null;          // keys already rendered once; null until first load
-  let appFilter = '';
   const expanded = new Set();
 
   // ── keyboard selection ──
@@ -317,9 +290,39 @@
   let selKey = null;
 
   const keyOf = e => `${e.timestamp}|${e.text}`;
-  const appKey = e => (e.app || '').toLowerCase().replace(/\.exe$/, '');
-  const appLabel = k => APP_NAMES[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : 'Unknown app');
+  const exeKey = e => (e.app || '').toLowerCase().replace(/\.exe$/, '');
+  const slug = s => s.toLowerCase().replace(/[\s._-]+/g, '');
+  const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const words = t => (t.trim().match(/\S+/g) || []).length;
+
+  // ── app names ──
+  // Entries carry the real app name recorded at dictation time ("Claude Code", not "claude").
+  // Older entries lack it and borrow the newest name seen for the same exe.
+  // ponytail: legacy entries of two apps sharing an exe name merge; new entries don't.
+  function withLabels(raw) {
+    const nameByExe = new Map();
+    raw.forEach(e => { if (e.app_name && !nameByExe.has(exeKey(e))) nameByExe.set(exeKey(e), e.app_name); });
+    return raw.map(e => {
+      const exe = exeKey(e);
+      const label = e.app_name || nameByExe.get(exe) || (exe ? exe.charAt(0).toUpperCase() + exe.slice(1) : 'Unknown app');
+      return { ...e, label, appMatch: `${slug(label)}|${exe}`, lower: (e.text || '').toLowerCase() };
+    });
+  }
+
+  // ── query ──
+  // The search box is the single source of filter truth: `app:<name>` narrows by app
+  // (chips just write it for you), every other word must appear, in any order.
+  function parseQuery(raw) {
+    let app = '';
+    const terms = [];
+    raw.toLowerCase().split(/\s+/).filter(Boolean).forEach(tok => {
+      if (tok.startsWith('app:')) app = tok.slice(4); else terms.push(tok);
+    });
+    return { app, terms };
+  }
+  const withoutApp = raw => raw.replace(/(^|\s)app:\S*/gi, ' ').trim();
+  const matchesTerms = (e, terms) => terms.every(t => e.lower.includes(t));
+  const matchesApp = (e, app) => !app || e.appMatch.includes(app);
 
   // Timestamps are local "YYYY-MM-DDTHH:MM:SS" — parse without timezone shifts.
   function parseTs(ts) {
@@ -337,61 +340,49 @@
   }
   const timeLabel = d => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
-  // Appends `text` to `el`, wrapping case-insensitive matches of `needle` in <mark>.
-  function appendHighlighted(el, text, needle) {
-    if (!needle) { el.textContent = text; return; }
-    const lower = text.toLowerCase();
-    let i = 0, hit;
-    while ((hit = lower.indexOf(needle, i)) !== -1) {
-      el.append(text.slice(i, hit));
+  // Appends `text` to `el`, wrapping case-insensitive matches of any term in <mark>.
+  function appendHighlighted(el, text, terms) {
+    if (!terms.length) { el.textContent = text; return; }
+    const longestFirst = [...terms].sort((a, b) => b.length - a.length).map(escapeRe);
+    // split() with one capture group puts the matches at the odd indices.
+    text.split(new RegExp(`(${longestFirst.join('|')})`, 'gi')).forEach((part, i) => {
+      if (i % 2 === 0) { el.append(part); return; }
       const m = document.createElement('mark');
-      m.textContent = text.slice(hit, hit + needle.length);
+      m.textContent = part;
       el.append(m);
-      i = hit + needle.length;
-    }
-    el.append(text.slice(i));
-  }
-
-  function renderStats() {
-    const today = new Date().toDateString();
-    const todayCount = entries.filter(e => parseTs(e.timestamp)?.toDateString() === today).length;
-    const totalWords = entries.reduce((n, e) => n + words(e.text || ''), 0);
-    stats.innerHTML = '';
-    const parts = [
-      [entries.length.toLocaleString(), entries.length === 1 ? ' dictation' : ' dictations'],
-      [totalWords.toLocaleString(), ' words'],
-      [todayCount.toLocaleString(), ' today'],
-    ];
-    parts.forEach(([n, label], i) => {
-      if (i) stats.append('  ·  ');
-      const b = document.createElement('b'); b.textContent = n;
-      stats.append(b, label);
     });
   }
 
-  function renderChips() {
-    const counts = new Map();
-    entries.forEach(e => { const k = appKey(e); counts.set(k, (counts.get(k) || 0) + 1); });
-    const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 8);
-    if (appFilter && !counts.has(appFilter)) appFilter = '';
+  // Chips: "All" plus the most-dictated apps. Order is by all-time volume so chips
+  // never jump while typing; counts follow the current search words.
+  function renderChips(app, terms) {
+    const total = new Map(), hits = new Map();
+    entries.forEach(e => {
+      total.set(e.label, (total.get(e.label) || 0) + 1);
+      if (matchesTerms(e, terms)) hits.set(e.label, (hits.get(e.label) || 0) + 1);
+    });
+    const top = [...total.keys()].sort((a, b) => total.get(b) - total.get(a)).slice(0, MAX_APP_CHIPS);
+    const allHits = [...hits.values()].reduce((n, c) => n + c, 0);
+
     chips.innerHTML = '';
-    const make = (k, label, n) => {
+    const make = (label, appSlug, n) => {
       const c = document.createElement('button');
       c.className = 'chip';
-      c.setAttribute('aria-pressed', String(appFilter === k));
+      c.tabIndex = -1;  // mouse-only: Tab from search should land on the transcripts
+      c.setAttribute('aria-pressed', String(app === appSlug));
       c.append(label);
-      const s = document.createElement('span'); s.textContent = n; c.append(s);
-      c.tabIndex = -1;  // mouse-only: Tab from search should land on the transcripts, not 9 chips
+      const s = document.createElement('span'); s.textContent = n.toLocaleString(); c.append(s);
       c.onclick = () => {
-        appFilter = appFilter === k && k ? '' : k;
-        selKey = null;
-        renderChips(); renderFeed();
-        q.focus();  // keep arrows/Enter working after a click
+        const rest = withoutApp(q.value);
+        const token = appSlug && app !== appSlug ? `app:${appSlug} ` : '';  // pressed chip toggles off
+        setQuery(token + (rest ? rest + ' ' : ''));
+        q.focus();
+        q.setSelectionRange(q.value.length, q.value.length);
       };
       chips.append(c);
     };
-    make('', 'All', entries.length);
-    top.forEach(([k, n]) => make(k, appLabel(k), n));
+    make('All', '', allHits);
+    top.forEach(label => make(label, slug(label), hits.get(label) || 0));
     chips.hidden = top.length < 2;
   }
 
@@ -406,7 +397,7 @@
     return d;
   }
 
-  function renderEntry(e, needle, isNew) {
+  function renderEntry(e, terms, isNew) {
     const d = parseTs(e.timestamp);
     const text = e.text || '';
     const key = keyOf(e);
@@ -421,14 +412,14 @@
     const body = document.createElement('div');
     const p = document.createElement('p');
     p.className = 'text';
-    appendHighlighted(p, text, needle);
-    const long = text.length > CLAMP_CHARS && !needle;
+    appendHighlighted(p, text, terms);
+    const long = text.length > CLAMP_CHARS && !terms.length;
     if (long && !expanded.has(key)) p.classList.add('clamped');
 
     const meta = document.createElement('div');
     meta.className = 'meta';
     const tag = document.createElement('span');
-    tag.className = 'app-tag'; tag.textContent = appLabel(appKey(e));
+    tag.className = 'app-tag'; tag.textContent = e.label;
     meta.append(tag);
     const facts = [`${words(text)} words`];
     if (e.duration_s) facts.push(`${(+e.duration_s).toFixed(1)}s`);
@@ -505,24 +496,29 @@
     if (andClose) window.pywebview.api.close();
   }
 
-  // Esc peels back one layer at a time: search text, then app filter, then the window.
-  function dismiss() {
+  // Re-renders for a new query, starting again from the newest match at the top.
+  function refresh() {
+    selKey = null; scroller.scrollTop = 0; renderFeed();
+  }
+  function setQuery(value) {
     clearTimeout(searchTimer);
-    if (q.value) {
-      q.value = ''; selKey = null; scroller.scrollTop = 0; renderFeed();
-    } else if (appFilter) {
-      appFilter = ''; selKey = null; renderChips(); renderFeed();
-    } else {
-      window.pywebview.api.close();
-    }
+    q.value = value;
+    refresh();
+  }
+
+  // Esc peels back one layer at a time: search words, then the app: filter, then the window.
+  function dismiss() {
+    const { app, terms } = parseQuery(q.value);
+    if (terms.length) setQuery(app ? `app:${app} ` : '');
+    else if (q.value.trim()) setQuery('');
+    else window.pywebview.api.close();
     q.focus();
   }
 
   function renderFeed() {
-    const needle = q.value.trim().toLowerCase();
-    shown = entries.filter(e =>
-      (!appFilter || appKey(e) === appFilter) &&
-      (!needle || (e.text || '').toLowerCase().includes(needle)));
+    const { app, terms } = parseQuery(q.value);
+    renderChips(app, terms);
+    shown = entries.filter(e => matchesApp(e, app) && matchesTerms(e, terms));
     rows = [];
 
     // Keep the reader's place when new entries land above them.
@@ -532,7 +528,10 @@
     if (!entries.length) {
       frag.append(emptyState('Nothing here yet', 'Hold your dictation hotkey and start talking — transcripts show up here as you go.'));
     } else if (!shown.length) {
-      frag.append(emptyState('No matches', needle ? `Nothing you've said contains “${q.value.trim()}”.` : 'No dictations for this app.'));
+      const where = app ? ` in app:${app}` : '';
+      frag.append(emptyState('No matches', terms.length
+        ? `Nothing${where} contains ${terms.length > 1 ? 'all of ' : ''}“${terms.join(' ')}”.`
+        : `No app matches “${app}”.`));
     }
 
     let currentDay = '', dayCount = null;
@@ -551,7 +550,7 @@
       }
       dayCount.dataset.n = +dayCount.dataset.n + 1;
       dayCount.textContent = dayCount.dataset.n;
-      const row = renderEntry(e, needle, seen !== null && !seen.has(keyOf(e)));
+      const row = renderEntry(e, terms, seen !== null && !seen.has(keyOf(e)));
       rows.push(row);
       frag.append(row);
     });
@@ -567,9 +566,7 @@
       const res = await window.pywebview.api.poll(sig);
       if (res) {
         sig = res.sig;
-        entries = res.entries || [];
-        renderStats();
-        renderChips();
+        entries = withLabels(res.entries || []);
         renderFeed();
       }
     } catch (err) {
@@ -582,7 +579,7 @@
   let searchTimer;
   q.addEventListener('input', () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { selKey = null; scroller.scrollTop = 0; renderFeed(); }, 90);
+    searchTimer = setTimeout(refresh, 90);
   });
 
   // Global keys. Enter only acts from search/body so a Tab-focused button keeps its own Enter.
