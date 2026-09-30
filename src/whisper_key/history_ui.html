@@ -16,11 +16,19 @@
     --muted: #4f4c45;
     --faint: #6a665e;
     --line: #e4e1d9;
+    --control-line: #8e8c86;  /* input boundary: >=3:1 vs --bg and --surface */
     --accent: #955305;
     --accent-soft: rgba(149, 83, 5, .10);
     --mark: rgba(240, 170, 50, .42);
     --live: #1d7240;  /* success text */
     --radius: 10px;
+    /* Layout: header and feed share one content column so the search bar lines up with
+       the list. --time-col fits "12:47 PM" in the mono timestamp font without wrapping. */
+    --content-max: 860px;
+    --gutter: 28px;
+    --time-col: 60px;
+    /* Hover is a whisper; the accent-tinted, outlined selection is the only strong "current row". */
+    --hover-row: color-mix(in srgb, var(--hover) 50%, var(--bg));
     --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
     --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
@@ -36,6 +44,7 @@
       --muted: #bbb6ab;
       --faint: #94908a;
       --line: #2a2825;
+      --control-line: #6a6863;
       --accent: #f0b35a;
       --accent-soft: rgba(240, 179, 90, .12);
       --mark: rgba(240, 179, 90, .32);
@@ -60,15 +69,15 @@
 
   /* ── header ── */
   header {
-    padding: 18px 28px 0;
+    padding: 14px var(--gutter) 0;
     border-bottom: 1px solid var(--line);
     background: var(--bg);
+    /* Reserve the same scrollbar gutter as the feed below, or the search bar overhangs
+       the list by a scrollbar's width. overflow:hidden is what lets the gutter apply. */
+    overflow: hidden;
+    scrollbar-gutter: stable;
   }
-  h1 {
-    margin: 0 0 12px;
-    font: 600 26px/1.15 var(--font-display);
-    letter-spacing: -.01em;
-  }
+  header > * { max-width: calc(var(--content-max) - 2 * var(--gutter)); }
 
   .search {
     position: relative;
@@ -81,7 +90,7 @@
   .search input {
     width: 100%;
     padding: 10px 70px 10px 38px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--control-line);
     border-radius: var(--radius);
     background: var(--surface);
     color: var(--text);
@@ -99,6 +108,19 @@
     font: 12px var(--font-mono); color: var(--faint);
     border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
   }
+  /* With text in the box, the clear button takes the Ctrl F hint's place. */
+  .search input:not(:placeholder-shown) { padding-right: 10px; }
+  .search input:not(:placeholder-shown) + kbd { display: none; }
+  /* The native clear button, redrawn in the page's own ink instead of Chromium's blue. */
+  .search input::-webkit-search-cancel-button {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; margin: 0; cursor: pointer;
+    border-radius: 50%;
+    background: var(--muted);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E") center / 14px no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E") center / 14px no-repeat;
+  }
+  .search input::-webkit-search-cancel-button:hover { background: var(--text); }
 
   .chips[hidden] { display: none; }  /* author display:flex would otherwise beat [hidden] */
   .chips {
@@ -127,12 +149,12 @@
 
   /* ── feed ── */
   main { flex: 1; overflow-y: auto; scrollbar-gutter: stable; }
-  .feed { max-width: 860px; padding: 0 28px 40px; }
+  .feed { max-width: var(--content-max); padding: 0 var(--gutter) 40px; }
 
   .day {
     position: sticky; top: 0; z-index: 1;
     padding: 18px 0 8px;
-    background: linear-gradient(var(--bg) 75%, transparent);
+    background: var(--bg);
     font-size: 12px; font-weight: 600;
     letter-spacing: .08em; text-transform: uppercase;
     color: var(--faint);
@@ -141,17 +163,18 @@
 
   .entry {
     position: relative;
-    display: grid; grid-template-columns: 56px 1fr auto; gap: 0 12px;
+    display: grid; grid-template-columns: var(--time-col) 1fr auto; gap: 0 12px;
     padding: 12px 12px 12px 10px;
     margin: 0 -12px 0 -10px;
     border-radius: var(--radius);
     transition: background .15s;
   }
   .entry + .entry::before {
-    content: ""; position: absolute; top: 0; left: 78px; right: 12px;
+    content: ""; position: absolute; top: 0; right: 12px;
+    left: calc(10px + var(--time-col) + 12px);  /* row padding + time column + gap: starts under the text */
     border-top: 1px solid var(--line);
   }
-  .entry:hover, .entry:focus-within { background: var(--hover); }
+  .entry:hover { background: var(--hover-row); }
   .entry:hover::before, .entry:hover + .entry::before,
   .entry:focus-within::before, .entry:focus-within + .entry::before { border-color: transparent; }
 
@@ -168,6 +191,7 @@
     padding-top: 2px;
     font: 12px/1.5 var(--font-mono); color: var(--faint);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .text {
     margin: 0;
@@ -202,8 +226,12 @@
   .copy svg { width: 14px; height: 14px; }
   .entry:hover .copy, .entry:focus-within .copy, .entry.is-selected .copy,
   .copy.done, .copy.failed { opacity: 1; transform: none; }
-  .entry.is-selected .copy:not(.done):not(.failed)::after {
+  .copy::after {
     content: "↵"; margin-left: 2px; font: 12px var(--font-mono); color: var(--muted);
+    visibility: hidden;
+  }
+  .entry.is-selected .copy:not(.done):not(.failed)::after {
+    visibility: visible;
   }
   .copy:hover { color: var(--text); border-color: var(--faint); }
   .copy.done { color: var(--live); border-color: currentColor; }
@@ -234,14 +262,17 @@
   /* ── footer: shortcuts left, status + match count right ── */
   .bar {
     display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px;
-    padding: 8px 28px;
+    padding: 8px var(--gutter);
     border-top: 1px solid var(--line);
     font-size: 12px; color: var(--muted);
   }
   .keys { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 0; padding: 0; list-style: none; }
   .keys li + li::before { content: "·"; margin: 0 9px; color: var(--faint); }
   .keys kbd { margin-right: 4px; }
-  .status { margin-left: auto; }
+  .status {
+    margin-left: auto; max-width: 48ch;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .status[data-tone="ok"] { color: var(--live); }
   .status[data-tone^="error"] { color: var(--accent); }
   .count { font-variant-numeric: tabular-nums; }
@@ -273,10 +304,16 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
+  /* Short windows (and 200% zoom): give the rows the height. Filtering still works by typing
+     app:, and the key legend goes; status and count stay. */
+  @media (max-height: 560px) {
+    header { padding-top: 10px; }
+    .chips, .keys { display: none; }
+  }
   @media (max-width: 600px) {
-    header { padding: 16px 16px 0; }
-    .bar { padding: 8px 16px; }
-    .feed { padding: 0 16px 32px; }
+    :root { --gutter: 16px; }
+    header { padding-top: 16px; }
+    .feed { padding-bottom: 32px; }
     .entry { grid-template-columns: 1fr auto; }
     .time { grid-column: 1 / -1; }
     .entry + .entry::before { left: 12px; }
@@ -287,13 +324,13 @@
 <body>
 <div class="app">
   <header>
-    <h1>Transcript History</h1>
+    <h1 class="sr-only">Transcript History</h1>
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search everything you've said" autocomplete="off" spellcheck="false" aria-label="Search transcripts" autofocus>
       <kbd>Ctrl F</kbd>
     </label>
-    <nav class="chips" id="chips" aria-label="Filter by app"></nav>
+    <div class="chips" id="chips" role="group" aria-label="Filter by app"></div>
   </header>
   <div class="stage">
     <main id="scroller">
@@ -432,6 +469,7 @@
       c.className = 'chip';
       c.tabIndex = -1;  // mouse-only: Tab from search should land on the transcripts
       c.setAttribute('aria-pressed', String(app === appSlug));
+      c.setAttribute('aria-label', `${label}, ${plural(n, 'dictation')}`);
       c.append(label);
       const s = document.createElement('span'); s.textContent = n.toLocaleString(); c.append(s);
       c.onclick = () => {
@@ -511,11 +549,12 @@
     const copy = document.createElement('button');
     copy.className = 'copy';
     copy.innerHTML = ICON_COPY + '<span>Copy</span>';
-    copy.setAttribute('aria-label', 'Copy transcript');
+    copy.setAttribute('aria-label', `Copy: ${time.textContent} ${snippet(text, 40)}`);  // distinct names, not 48 identical "Copy"s
     copy.onclick = () => copyText(copy, text);
 
-    // Clicking a row selects it, so mouse and keyboard agree on what Enter copies.
-    row.addEventListener('click', () => { selKey = key; paintSelection(false); });
+    // Clicking or tabbing into a row selects it, so every pointer agrees on what Enter copies.
+    row.addEventListener('click', () => selectKey(key));
+    row.addEventListener('focusin', () => selectKey(key));
 
     let lastTerms = null;
     row.update = (label, terms) => {
@@ -548,6 +587,11 @@
     return day;
   }
 
+  function setDayCount(day, label, n) {
+    day.count.textContent = n;
+    day.el.setAttribute('aria-label', `${label}, ${plural(n, 'dictation')}`);
+  }
+
   // Makes `parent`'s children exactly `nodes`. Rows only ever drop out or appear in date
   // order, so after removals every survivor is already in place and nothing moves;
   // moving a node would blur whatever is focused inside it.
@@ -570,8 +614,8 @@
     }
     flashCopyButton(btn, ok);
     if (ok) {
-      setStatus('Copied to clipboard', 'ok', STATUS_MS);
-      announce('Copied');
+      setStatus(`Copied: “${snippet(text, 40)}”`, 'ok', STATUS_MS);
+      announce(`Copied: ${snippet(text, 60)}`);
     } else {
       setStatus("Couldn't copy. Try again.", 'error', STATUS_MS * 2);
       announce('Copy failed');
@@ -636,6 +680,14 @@
     if (unseenNew && scroller.scrollTop <= NEAR_TOP_PX) { unseenNew = 0; renderPill(); }
   }, { passive: true });
 
+  // First ~n characters of a dictation, cut at a word boundary: "Run the test suite…".
+  function snippet(text, n) {
+    const t = text.replace(/\s+/g, ' ').trim();
+    if (t.length <= n) return t;
+    const cut = t.slice(0, n), space = cut.lastIndexOf(' ');
+    return (space > n * 0.6 ? cut.slice(0, space) : cut) + '…';
+  }
+
   // First-run hint naming the real hotkey: "Hold [Ctrl] + [Alt] and start talking…".
   function firstRunHint() {
     const tail = ' and start talking. Your transcripts show up here as you go.';
@@ -660,20 +712,78 @@
 
   // Marks the selected row; `reveal` scrolls it into view (keyboard moves only, never on poll).
   function paintSelection(reveal) {
-    selectedRow?.classList.remove('is-selected');
+    if (selectedRow) { selectedRow.classList.remove('is-selected'); selectedRow.removeAttribute('aria-current'); }
     const i = selIndex();
     selectedRow = rows[i] || null;
     if (!selectedRow) return;
     selectedRow.classList.add('is-selected');
+    selectedRow.setAttribute('aria-current', 'true');
     if (reveal) i === 0 ? (scroller.scrollTop = 0) : selectedRow.scrollIntoView({ block: 'nearest' });
+  }
+
+  // Selecting the newest row means "follow newest", so fresh dictations take the selection.
+  function selectIndex(i) {
+    selKey = i === 0 ? null : keyOf(shown[i]);
+  }
+  function selectKey(key) {
+    const i = shown.findIndex(e => keyOf(e) === key);
+    if (i === -1 || i === selIndex()) return;
+    selectIndex(i);
+    paintSelection(false);
   }
 
   function moveSelection(delta) {
     if (!shown.length) return;
     const i = Math.min(shown.length - 1, Math.max(0, selIndex() + delta));
-    selKey = i === 0 ? null : keyOf(shown[i]);  // back at the top = follow newest again
+    selectIndex(i);
     paintSelection(true);
+    // Screen readers can't see the highlight, so say which row Enter will now copy.
+    const e = shown[i], d = parseTs(e.timestamp);
+    announce(`${d ? timeLabel(d) + ', ' : ''}${e.label}: ${snippet(e.text || '', 80)} (${i + 1} of ${shown.length})`);
   }
+
+  // ── selection follows the view ──
+  // When scrolling hides the selected row, the selection moves to the first row in view,
+  // so Enter never copies something you can't see.
+  const MIN_VISIBLE_PX = 24;   // a row counts as in view once this much of it clears the bottom edge
+  // The visible band of the list: from the bottom of whichever day header is stuck to the
+  // top (all past headers stick at the same spot) down to the bottom of the scroller.
+  function viewBounds() {
+    const s = scroller.getBoundingClientRect();
+    let top = s.top;
+    for (const day of feed.querySelectorAll('.day')) {
+      const r = day.getBoundingClientRect();
+      if (r.top > s.top + 1) break;   // headers still in normal flow aren't covering anything
+      top = Math.max(top, r.bottom);
+    }
+    return { top, bottom: s.bottom };
+  }
+  // Rows are in layout order, so binary-search for the first whose top edge clears the header.
+  function firstVisibleIndex(top) {
+    let lo = 0, hi = rows.length - 1, found = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid].getBoundingClientRect().top >= top - 1) { found = mid; hi = mid - 1; } else lo = mid + 1;
+    }
+    return found;
+  }
+  function followView() {
+    if (!selectedRow) return;
+    const view = viewBounds(), top = selectedRow.getBoundingClientRect().top;
+    if (top >= view.top - 1 && top < view.bottom - MIN_VISIBLE_PX) return;
+    let i = firstVisibleIndex(view.top);
+    // A row taller than the view (an expanded dictation) has no clear top edge; keep that one.
+    if (i > 0 && (i === -1 || rows[i].getBoundingClientRect().top >= view.bottom - MIN_VISIBLE_PX)) {
+      i = i === -1 ? rows.length - 1 : i - 1;
+    }
+    if (i === -1 || i === selIndex()) return;
+    selectIndex(i);
+    paintSelection(false);
+  }
+  let followFrame = 0;
+  scroller.addEventListener('scroll', () => {
+    if (!followFrame) followFrame = requestAnimationFrame(() => { followFrame = 0; followView(); });
+  }, { passive: true });
 
   async function copySelected(andClose) {
     const i = selIndex(), row = rows[i];
@@ -725,7 +835,7 @@
       const d = parseTs(e.timestamp);
       const label = d ? dayLabel(d) : 'Undated';
       if (label !== currentLabel) {
-        if (day) day.count.textContent = dayN;
+        if (day) setDayCount(day, currentLabel, dayN);
         currentLabel = label; day = dayHeader(label); dayN = 0;
         nodes.push(day.el);
       }
@@ -742,7 +852,7 @@
       nodes.push(row);
       return row;
     });
-    if (day) day.count.textContent = dayN;
+    if (day) setDayCount(day, currentLabel, dayN);
 
     const hadFocus = feed.contains(document.activeElement);
     patchChildren(feed, nodes);
