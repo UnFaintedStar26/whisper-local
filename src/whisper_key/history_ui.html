@@ -5,18 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Transcript History</title>
 <style>
+  /* Contrast floor: every text token (--text, --muted, --faint, --accent, --live) is
+     >=4.5:1 against --bg, --surface, --hover AND --accent-soft over --bg (selected row,
+     pressed chip), in both themes. Re-check all four when changing any of them. */
   :root {
     --bg: #f6f5f2;
     --surface: #ffffff;
     --hover: #eeece6;
     --text: #1c1b19;
-    --muted: #66635b;
-    --faint: #9d998f;
+    --muted: #4f4c45;
+    --faint: #6a665e;
     --line: #e4e1d9;
-    --accent: #a35b06;
-    --accent-soft: rgba(163, 91, 6, .10);
+    --accent: #955305;
+    --accent-soft: rgba(149, 83, 5, .10);
     --mark: rgba(240, 170, 50, .42);
-    --live: #1f7a44;  /* success text; ≥4.5:1 on --bg and --surface */
+    --live: #1d7240;  /* success text */
     --radius: 10px;
     --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
@@ -30,8 +33,8 @@
       --surface: #1b1a18;
       --hover: #222019;
       --text: #ece9e2;
-      --muted: #a8a397;
-      --faint: #6f6b62;
+      --muted: #bbb6ab;
+      --faint: #94908a;
       --line: #2a2825;
       --accent: #f0b35a;
       --accent-soft: rgba(240, 179, 90, .12);
@@ -117,7 +120,7 @@
   .chip[aria-pressed="true"] {
     background: var(--accent-soft); border-color: transparent; color: var(--accent);
   }
-  .chip[aria-pressed="true"] span { color: inherit; opacity: .7; }
+  .chip[aria-pressed="true"] span { color: inherit; }
   .chip:focus-visible, .copy:focus-visible, .more:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
@@ -180,7 +183,7 @@
     margin-top: 6px; font-size: 12px; color: var(--faint);
   }
   .app-tag { color: var(--muted); font-weight: 500; }
-  .meta i { font-style: normal; opacity: .5; }
+  .meta i { font-style: normal; }
   .more {
     border: 0; background: none; padding: 0; cursor: pointer;
     color: var(--accent); font-size: 12px; font-weight: 500;
