@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcript History</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #ffffff;
+    --hover: #eeece6;
+    --text: #1c1b19;
+    --muted: #66635b;
+    --faint: #9d998f;
+    --line: #e4e1d9;
+    --accent: #a35b06;
+    --accent-soft: rgba(163, 91, 6, .10);
+    --mark: rgba(240, 170, 50, .42);
+    --live: #2f9e5b;
+    --radius: 10px;
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131211;
+      --surface: #1b1a18;
+      --hover: #222019;
+      --text: #ece9e2;
+      --muted: #a8a397;
+      --faint: #6f6b62;
+      --line: #2a2825;
+      --accent: #f0b35a;
+      --accent-soft: rgba(240, 179, 90, .12);
+      --mark: rgba(240, 179, 90, .32);
+      --live: #4cc47e;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 var(--font);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button { font: inherit; color: inherit; }
+  ::selection { background: var(--mark); }
+
+  .app { display: flex; flex-direction: column; height: 100%; }
+
+  /* ── header ── */
+  header {
+    padding: 22px 28px 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .title-row { display: flex; align-items: baseline; gap: 14px; }
+  h1 {
+    margin: 0;
+    font: 600 26px/1.15 var(--font-display);
+    letter-spacing: -.01em;
+  }
+  .live {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+  }
+  .live::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--live);
+    box-shadow: 0 0 0 0 var(--live);
+    animation: pulse 2.4s var(--ease) infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); }
+    70%, 100% { box-shadow: 0 0 0 7px transparent; }
+  }
+  .stats { margin: 6px 0 16px; color: var(--muted); font-size: 12px; }
+  .stats b { color: var(--text); font-weight: 600; }
+
+  .search {
+    position: relative;
+    display: flex; align-items: center;
+  }
+  .search svg {
+    position: absolute; left: 12px; width: 16px; height: 16px;
+    color: var(--faint); pointer-events: none;
+  }
+  .search input {
+    width: 100%;
+    padding: 10px 70px 10px 38px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font: 15px var(--font);
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search input::placeholder { color: var(--faint); }
+  .search input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .search kbd {
+    position: absolute; right: 10px;
+    font: 12px var(--font-mono); color: var(--faint);
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+  }
+
+  .chips {
+    display: flex; gap: 6px; overflow-x: auto;
+    padding: 12px 0 14px; scrollbar-width: none;
+  }
+  .chip {
+    flex: none;
+    border: 1px solid var(--line);
+    background: transparent;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px; color: var(--muted);
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .chip span { color: var(--faint); margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .chip:hover { background: var(--hover); color: var(--text); }
+  .chip[aria-pressed="true"] {
+    background: var(--accent-soft); border-color: transparent; color: var(--accent);
+  }
+  .chip[aria-pressed="true"] span { color: inherit; opacity: .7; }
+  .chip:focus-visible, .copy:focus-visible, .more:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* ── feed ── */
+  main { flex: 1; overflow-y: auto; scrollbar-gutter: stable; }
+  .feed { max-width: 860px; padding: 0 28px 40px; }
+
+  .day {
+    position: sticky; top: 0; z-index: 1;
+    padding: 18px 0 8px;
+    background: linear-gradient(var(--bg) 75%, transparent);
+    font-size: 12px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--faint);
+  }
+  .day em { font-style: normal; font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: 6px; }
+
+  .entry {
+    position: relative;
+    display: grid; grid-template-columns: 56px 1fr auto; gap: 0 12px;
+    padding: 12px 12px 12px 10px;
+    margin: 0 -12px 0 -10px;
+    border-radius: var(--radius);
+    transition: background .15s;
+  }
+  .entry + .entry::before {
+    content: ""; position: absolute; top: 0; left: 78px; right: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .entry:hover, .entry:focus-within { background: var(--hover); }
+  .entry:hover::before, .entry:hover + .entry::before,
+  .entry:focus-within::before, .entry:focus-within + .entry::before { border-color: transparent; }
+
+  /* Keyboard selection: the row Enter will copy. Outranks hover so the mouse never hides it. */
+  .entry { scroll-margin: 52px 0 16px; }
+  .entry.is-selected {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  .entry.is-selected::before, .entry.is-selected + .entry::before { border-color: transparent; }
+  .entry.is-selected .time { color: var(--accent); }
+
+  .time {
+    padding-top: 2px;
+    font: 12px/1.5 var(--font-mono); color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .text {
+    margin: 0;
+    font-size: 15px; line-height: 1.58;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .text.clamped {
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 1px; }
+  .meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+    margin-top: 6px; font-size: 12px; color: var(--faint);
+  }
+  .app-tag { color: var(--muted); font-weight: 500; }
+  .meta i { font-style: normal; opacity: .5; }
+  .more {
+    border: 0; background: none; padding: 0; cursor: pointer;
+    color: var(--accent); font-size: 12px; font-weight: 500;
+  }
+
+  .copy {
+    align-self: start;
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: var(--surface);
+    border-radius: 8px; padding: 5px 10px;
+    font-size: 12px; color: var(--muted);
+    cursor: pointer;
+    opacity: 0; transform: translateY(2px);
+    transition: opacity .15s, transform .2s var(--ease), color .15s, border-color .15s;
+  }
+  .copy svg { width: 14px; height: 14px; }
+  .entry:hover .copy, .entry:focus-within .copy, .entry.is-selected .copy, .copy.done { opacity: 1; transform: none; }
+  .entry.is-selected .copy:not(.done)::after {
+    content: "↵"; margin-left: 2px; font: 12px var(--font-mono); color: var(--muted);
+  }
+  .copy:hover { color: var(--text); border-color: var(--faint); }
+  .copy.done { color: var(--live); border-color: currentColor; }
+
+  .entry.is-new { animation: arrive 1.8s var(--ease); }
+  .entry.is-new .time { color: var(--accent); }
+  @keyframes arrive {
+    0% { opacity: 0; transform: translateY(-6px); background: var(--accent-soft); }
+    25% { opacity: 1; transform: none; background: var(--accent-soft); }
+    100% { background: transparent; }
+  }
+
+  .empty {
+    display: grid; place-items: center; text-align: center;
+    padding: 90px 20px; color: var(--muted);
+  }
+  .empty svg { width: 40px; height: 40px; color: var(--faint); margin-bottom: 14px; }
+  .empty strong { display: block; color: var(--text); font: 600 19px var(--font-display); margin-bottom: 4px; }
+
+  /* ── shortcut legend ── */
+  .keys {
+    display: flex; flex-wrap: wrap; gap: 4px 18px;
+    padding: 8px 28px;
+    border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--muted);
+  }
+  .keys kbd {
+    font: 11px/1 var(--font-mono); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 2px 5px; margin-right: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { animation: none !important; transition: none !important; }
+  }
+  @media (max-width: 600px) {
+    header { padding: 16px 16px 0; }
+    .keys { padding: 8px 16px; }
+    .feed { padding: 0 16px 32px; }
+    .entry { grid-template-columns: 1fr auto; }
+    .time { grid-column: 1 / -1; }
+    .entry + .entry::before { left: 12px; }
+    .copy { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title-row">
+      <h1>Transcripts</h1>
+      <span class="live" title="New dictations appear automatically">Live</span>
+    </div>
+    <div class="stats" id="stats">Loading…</div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search everything you've said" autocomplete="off" spellcheck="false" aria-label="Search transcripts" autofocus>
+      <kbd>Ctrl F</kbd>
+    </label>
+    <nav class="chips" id="chips" aria-label="Filter by app"></nav>
+  </header>
+  <main id="scroller">
+    <div class="feed" id="feed" aria-live="polite"></div>
+  </main>
+  <footer class="keys">
+    <span><kbd>↑</kbd><kbd>↓</kbd>Select</span>
+    <span><kbd>↵</kbd>Copy</span>
+    <span><kbd>Shift</kbd><kbd>↵</kbd>Copy &amp; close</span>
+    <span><kbd>Esc</kbd>Clear, then close</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const POLL_MS = 1000;
+  const CLAMP_CHARS = 420;
+  const APP_NAMES = {
+    windowsterminal: 'Terminal', chatgpt: 'ChatGPT', claude: 'Claude', firefox: 'Firefox',
+    notepad: 'Notepad', code: 'VS Code', msedge: 'Edge', chrome: 'Chrome', brave: 'Brave',
+    discord: 'Discord', slack: 'Slack', obsidian: 'Obsidian', explorer: 'Explorer',
+    winword: 'Word', outlook: 'Outlook', teams: 'Teams', 'ms-teams': 'Teams',
+  };
+  const ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+  const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
+
+  const $ = id => document.getElementById(id);
+  const q = $('q'), feed = $('feed'), chips = $('chips'), stats = $('stats'), scroller = $('scroller');
+
+  let entries = [];
+  let sig = '';
+  let seen = null;          // keys already rendered once; null until first load
+  let appFilter = '';
+  const expanded = new Set();
+
+  // ── keyboard selection ──
+  // `shown`/`rows` mirror the rendered feed (newest first). `selKey` is the entry the user
+  // arrowed to; null means "follow the newest match", so fresh dictations take the selection.
+  let shown = [], rows = [];
+  let selKey = null;
+
+  const keyOf = e => `${e.timestamp}|${e.text}`;
+  const appKey = e => (e.app || '').toLowerCase().replace(/\.exe$/, '');
+  const appLabel = k => APP_NAMES[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : 'Unknown app');
+  const words = t => (t.trim().match(/\S+/g) || []).length;
+
+  // Timestamps are local "YYYY-MM-DDTHH:MM:SS" — parse without timezone shifts.
+  function parseTs(ts) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(ts || '');
+    return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) : null;
+  }
+  function dayLabel(d) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.round((today - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+    if (d.getFullYear() !== today.getFullYear()) opts.year = 'numeric';
+    return d.toLocaleDateString(undefined, opts);
+  }
+  const timeLabel = d => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+  // Appends `text` to `el`, wrapping case-insensitive matches of `needle` in <mark>.
+  function appendHighlighted(el, text, needle) {
+    if (!needle) { el.textContent = text; return; }
+    const lower = text.toLowerCase();
+    let i = 0, hit;
+    while ((hit = lower.indexOf(needle, i)) !== -1) {
+      el.append(text.slice(i, hit));
+      const m = document.createElement('mark');
+      m.textContent = text.slice(hit, hit + needle.length);
+      el.append(m);
+      i = hit + needle.length;
+    }
+    el.append(text.slice(i));
+  }
+
+  function renderStats() {
+    const today = new Date().toDateString();
+    const todayCount = entries.filter(e => parseTs(e.timestamp)?.toDateString() === today).length;
+    const totalWords = entries.reduce((n, e) => n + words(e.text || ''), 0);
+    stats.innerHTML = '';
+    const parts = [
+      [entries.length.toLocaleString(), entries.length === 1 ? ' dictation' : ' dictations'],
+      [totalWords.toLocaleString(), ' words'],
+      [todayCount.toLocaleString(), ' today'],
+    ];
+    parts.forEach(([n, label], i) => {
+      if (i) stats.append('  ·  ');
+      const b = document.createElement('b'); b.textContent = n;
+      stats.append(b, label);
+    });
+  }
+
+  function renderChips() {
+    const counts = new Map();
+    entries.forEach(e => { const k = appKey(e); counts.set(k, (counts.get(k) || 0) + 1); });
+    const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (appFilter && !counts.has(appFilter)) appFilter = '';
+    chips.innerHTML = '';
+    const make = (k, label, n) => {
+      const c = document.createElement('button');
+      c.className = 'chip';
+      c.setAttribute('aria-pressed', String(appFilter === k));
+      c.append(label);
+      const s = document.createElement('span'); s.textContent = n; c.append(s);
+      c.tabIndex = -1;  // mouse-only: Tab from search should land on the transcripts, not 9 chips
+      c.onclick = () => {
+        appFilter = appFilter === k && k ? '' : k;
+        selKey = null;
+        renderChips(); renderFeed();
+        q.focus();  // keep arrows/Enter working after a click
+      };
+      chips.append(c);
+    };
+    make('', 'All', entries.length);
+    top.forEach(([k, n]) => make(k, appLabel(k), n));
+    chips.hidden = top.length < 2;
+  }
+
+  function emptyState(title, body) {
+    const d = document.createElement('div');
+    d.className = 'empty';
+    d.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+    const t = document.createElement('div');
+    const s = document.createElement('strong'); s.textContent = title;
+    t.append(s, body);
+    d.append(t);
+    return d;
+  }
+
+  function renderEntry(e, needle, isNew) {
+    const d = parseTs(e.timestamp);
+    const text = e.text || '';
+    const key = keyOf(e);
+
+    const row = document.createElement('article');
+    row.className = 'entry' + (isNew ? ' is-new' : '');
+
+    const time = document.createElement('div');
+    time.className = 'time';
+    time.textContent = d ? timeLabel(d) : '';
+
+    const body = document.createElement('div');
+    const p = document.createElement('p');
+    p.className = 'text';
+    appendHighlighted(p, text, needle);
+    const long = text.length > CLAMP_CHARS && !needle;
+    if (long && !expanded.has(key)) p.classList.add('clamped');
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const tag = document.createElement('span');
+    tag.className = 'app-tag'; tag.textContent = appLabel(appKey(e));
+    meta.append(tag);
+    const facts = [`${words(text)} words`];
+    if (e.duration_s) facts.push(`${(+e.duration_s).toFixed(1)}s`);
+    facts.forEach(f => {
+      const dot = document.createElement('i'); dot.textContent = '·';
+      const s = document.createElement('span'); s.textContent = f;
+      meta.append(dot, s);
+    });
+    if (long) {
+      const more = document.createElement('button');
+      more.className = 'more';
+      const sync = () => { more.textContent = expanded.has(key) ? 'Show less' : 'Show more'; };
+      sync();
+      more.onclick = () => {
+        expanded.has(key) ? expanded.delete(key) : expanded.add(key);
+        p.classList.toggle('clamped', !expanded.has(key));
+        sync();
+      };
+      meta.append(more);
+    }
+    body.append(p, meta);
+
+    const copy = document.createElement('button');
+    copy.className = 'copy';
+    copy.innerHTML = ICON_COPY + '<span>Copy</span>';
+    copy.setAttribute('aria-label', 'Copy transcript');
+    copy.onclick = () => copyText(copy, text);
+
+    // Clicking a row selects it, so mouse and keyboard agree on what Enter copies.
+    row.addEventListener('click', () => { selKey = key; paintSelection(false); });
+
+    row.append(time, body, copy);
+    return row;
+  }
+
+  // Copies `text` and flips `btn` to its "Copied" state for a moment.
+  async function copyText(btn, text) {
+    await window.pywebview.api.copy(text);
+    btn.classList.add('done');
+    btn.innerHTML = ICON_CHECK + '<span>Copied</span>';
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => {
+      btn.classList.remove('done');
+      btn.innerHTML = ICON_COPY + '<span>Copy</span>';
+    }, 1600);
+  }
+
+  // Index of the selected entry in `shown`; falls back to the newest match.
+  function selIndex() {
+    const i = selKey === null ? -1 : shown.findIndex(e => keyOf(e) === selKey);
+    return i === -1 ? 0 : i;
+  }
+
+  // Marks the selected row; `reveal` scrolls it into view (keyboard moves only, never on poll).
+  function paintSelection(reveal) {
+    feed.querySelector('.is-selected')?.classList.remove('is-selected');
+    const i = selIndex(), row = rows[i];
+    if (!row) return;
+    row.classList.add('is-selected');
+    if (reveal) i === 0 ? (scroller.scrollTop = 0) : row.scrollIntoView({ block: 'nearest' });
+  }
+
+  function moveSelection(delta) {
+    if (!shown.length) return;
+    const i = Math.min(shown.length - 1, Math.max(0, selIndex() + delta));
+    selKey = i === 0 ? null : keyOf(shown[i]);  // back at the top = follow newest again
+    paintSelection(true);
+  }
+
+  async function copySelected(andClose) {
+    const i = selIndex(), row = rows[i];
+    if (!row) return;
+    await copyText(row.querySelector('.copy'), shown[i].text || '');
+    if (andClose) window.pywebview.api.close();
+  }
+
+  // Esc peels back one layer at a time: search text, then app filter, then the window.
+  function dismiss() {
+    clearTimeout(searchTimer);
+    if (q.value) {
+      q.value = ''; selKey = null; scroller.scrollTop = 0; renderFeed();
+    } else if (appFilter) {
+      appFilter = ''; selKey = null; renderChips(); renderFeed();
+    } else {
+      window.pywebview.api.close();
+    }
+    q.focus();
+  }
+
+  function renderFeed() {
+    const needle = q.value.trim().toLowerCase();
+    shown = entries.filter(e =>
+      (!appFilter || appKey(e) === appFilter) &&
+      (!needle || (e.text || '').toLowerCase().includes(needle)));
+    rows = [];
+
+    // Keep the reader's place when new entries land above them.
+    const anchorOffset = scroller.scrollTop > 4 ? scroller.scrollHeight - scroller.scrollTop : null;
+
+    const frag = document.createDocumentFragment();
+    if (!entries.length) {
+      frag.append(emptyState('Nothing here yet', 'Hold your dictation hotkey and start talking — transcripts show up here as you go.'));
+    } else if (!shown.length) {
+      frag.append(emptyState('No matches', needle ? `Nothing you've said contains “${q.value.trim()}”.` : 'No dictations for this app.'));
+    }
+
+    let currentDay = '', dayCount = null;
+    shown.forEach(e => {
+      const d = parseTs(e.timestamp);
+      const label = d ? dayLabel(d) : 'Undated';
+      if (label !== currentDay) {
+        currentDay = label;
+        const h = document.createElement('h2');
+        h.className = 'day';
+        h.textContent = label;
+        dayCount = document.createElement('em');
+        dayCount.dataset.n = '0';
+        h.append(dayCount);
+        frag.append(h);
+      }
+      dayCount.dataset.n = +dayCount.dataset.n + 1;
+      dayCount.textContent = dayCount.dataset.n;
+      const row = renderEntry(e, needle, seen !== null && !seen.has(keyOf(e)));
+      rows.push(row);
+      frag.append(row);
+    });
+
+    feed.replaceChildren(frag);
+    paintSelection(false);
+    if (anchorOffset !== null) scroller.scrollTop = scroller.scrollHeight - anchorOffset;
+    seen = new Set(entries.map(keyOf));
+  }
+
+  async function poll() {
+    try {
+      const res = await window.pywebview.api.poll(sig);
+      if (res) {
+        sig = res.sig;
+        entries = res.entries || [];
+        renderStats();
+        renderChips();
+        renderFeed();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTimeout(poll, POLL_MS);
+    }
+  }
+
+  let searchTimer;
+  q.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { selKey = null; scroller.scrollTop = 0; renderFeed(); }, 90);
+  });
+
+  // Global keys. Enter only acts from search/body so a Tab-focused button keeps its own Enter.
+  document.addEventListener('keydown', ev => {
+    const key = ev.key.toLowerCase(), focus = document.activeElement;
+    const ctrl = ev.ctrlKey && !ev.altKey && !ev.metaKey;
+    if ((ctrl && key === 'f') || (key === '/' && focus !== q)) {
+      ev.preventDefault(); q.focus(); q.select();
+    } else if (key === 'arrowdown' || (ctrl && key === 'j')) {
+      ev.preventDefault(); moveSelection(1);
+    } else if (key === 'arrowup' || (ctrl && key === 'k')) {
+      ev.preventDefault(); moveSelection(-1);
+    } else if (key === 'enter' && !ev.isComposing && (focus === q || focus === document.body)) {
+      ev.preventDefault(); copySelected(ev.shiftKey);
+    } else if (key === 'escape') {
+      ev.preventDefault(); dismiss();  // also stops the search box's native clear
+    } else if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey && focus === document.body) {
+      q.focus();  // typing after a row click goes back into search
+    }
+  });
+
+  window.addEventListener('pywebviewready', () => { q.focus(); poll(); });
+})();
+</script>
+</body>
+</html>

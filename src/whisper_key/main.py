@@ -409,8 +409,6 @@ def main():
     if args.history:
         from .history_window import show_history
         show_history()
-        import time
-        time.sleep(0.5)
         sys.exit(0)
 
     if args.enable_autostart:

@@ -493,6 +493,26 @@ class HistoryWindowModuleTests(unittest.TestCase):
         from whisper_key import history_window
         self.assertTrue(hasattr(history_window, 'show_history'))
 
+    def test_poll_returns_data_only_when_journal_changes(self):
+        import tempfile
+        import unittest.mock as mock
+        from whisper_key import transcript_log
+        from whisper_key.history_window import Api
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch('whisper_key.transcript_log.get_user_app_data_path', return_value=tmpdir):
+                api = Api(transcript_log.transcript_log_path())
+                first = api.poll('')
+                self.assertEqual(first['entries'], [])
+                self.assertIsNone(api.poll(first['sig']))
+                transcript_log.record_transcript("Hello world", app="test.exe")
+                second = api.poll(first['sig'])
+                self.assertEqual([e['text'] for e in second['entries']], ["Hello world"])
+                self.assertIsNone(api.poll(second['sig']))
+
+    def test_ui_page_packaged(self):
+        from whisper_key import history_window
+        self.assertTrue(history_window._HTML_PATH.exists())
+
 
 class ReleaseWorkflowTests(unittest.TestCase):
     def test_release_workflow_exists(self):

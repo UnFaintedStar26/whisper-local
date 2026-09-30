@@ -25,6 +25,10 @@ _MAX_ENTRIES = 2000
 _write_lock = threading.Lock()
 
 
+def transcript_log_path() -> Path:
+    return Path(get_user_app_data_path()) / _LOG_FILE
+
+
 # Called from state_manager._transcription_pipeline after every successful
 # delivery. Silent no-op for empty text (which means a failed/silent recording).
 def record_transcript(text: str, app: str = '', duration_s: float = 0.0):
@@ -37,7 +41,7 @@ def record_transcript(text: str, app: str = '', duration_s: float = 0.0):
         'duration_s': round(duration_s, 2),
         'chars': len(text),
     }
-    path = Path(get_user_app_data_path()) / _LOG_FILE
+    path = transcript_log_path()
     try:
         with _write_lock:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,7 +56,7 @@ def record_transcript(text: str, app: str = '', duration_s: float = 0.0):
 # history window. Silently skips malformed lines so a single corrupted entry
 # doesn't break the whole UI.
 def load_transcripts() -> list:
-    path = Path(get_user_app_data_path()) / _LOG_FILE
+    path = transcript_log_path()
     entries = []
     if not path.exists():
         return entries
