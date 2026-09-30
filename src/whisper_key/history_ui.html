@@ -16,7 +16,7 @@
     --accent: #a35b06;
     --accent-soft: rgba(163, 91, 6, .10);
     --mark: rgba(240, 170, 50, .42);
-    --live: #2f9e5b;
+    --live: #1f7a44;  /* success text; ≥4.5:1 on --bg and --surface */
     --radius: 10px;
     --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
@@ -97,6 +97,7 @@
     border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
   }
 
+  .chips[hidden] { display: none; }  /* author display:flex would otherwise beat [hidden] */
   .chips {
     display: flex; gap: 6px; overflow-x: auto;
     padding: 12px 0 14px; scrollbar-width: none;
@@ -218,25 +219,34 @@
   .empty svg { width: 40px; height: 40px; color: var(--faint); margin-bottom: 14px; }
   .empty strong { display: block; color: var(--text); font: 600 19px var(--font-display); margin-bottom: 4px; }
 
-  /* ── shortcut legend ── */
-  .keys {
-    display: flex; flex-wrap: wrap; gap: 4px 18px;
+  .empty kbd, .bar kbd {
+    font: 11px/1 var(--font-mono); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 2px 5px;
+  }
+  .empty kbd { font-size: 12px; color: var(--text); }
+
+  /* ── footer: shortcuts left, status + match count right ── */
+  .bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px;
     padding: 8px 28px;
     border-top: 1px solid var(--line);
     font-size: 12px; color: var(--muted);
   }
-  .keys kbd {
-    font: 11px/1 var(--font-mono); color: var(--muted);
-    border: 1px solid var(--line); border-radius: 4px;
-    padding: 2px 5px; margin-right: 3px;
-  }
+  .keys { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 0; padding: 0; list-style: none; }
+  .keys li + li::before { content: "·"; margin: 0 9px; color: var(--faint); }
+  .keys kbd { margin-right: 4px; }
+  .status { margin-left: auto; }
+  .status[data-tone="ok"] { color: var(--live); }
+  .status[data-tone^="error"] { color: var(--accent); }
+  .count { font-variant-numeric: tabular-nums; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before { animation: none !important; transition: none !important; }
   }
   @media (max-width: 600px) {
     header { padding: 16px 16px 0; }
-    .keys { padding: 8px 16px; }
+    .bar { padding: 8px 16px; }
     .feed { padding: 0 16px 32px; }
     .entry { grid-template-columns: 1fr auto; }
     .time { grid-column: 1 / -1; }
@@ -248,7 +258,7 @@
 <body>
 <div class="app">
   <header>
-    <h1>Transcripts</h1>
+    <h1>Transcript History</h1>
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search everything you've said" autocomplete="off" spellcheck="false" aria-label="Search transcripts" autofocus>
@@ -259,11 +269,15 @@
   <main id="scroller">
     <div class="feed" id="feed" aria-live="polite"></div>
   </main>
-  <footer class="keys">
-    <span><kbd>↑</kbd><kbd>↓</kbd>Select</span>
-    <span><kbd>↵</kbd>Copy</span>
-    <span><kbd>Shift</kbd><kbd>↵</kbd>Copy &amp; close</span>
-    <span><kbd>Esc</kbd>Clear, then close</span>
+  <footer class="bar">
+    <ul class="keys" aria-label="Keyboard shortcuts">
+      <li><kbd>↑↓</kbd>move</li>
+      <li><kbd>Enter</kbd>copy</li>
+      <li><kbd>⇧Enter</kbd>copy &amp; close</li>
+      <li><kbd>Esc</kbd>clear / close</li>
+    </ul>
+    <span class="status" id="status" role="status"></span>
+    <span class="count" id="count"></span>
   </footer>
 </div>
 
@@ -272,15 +286,18 @@
   const POLL_MS = 1000;
   const CLAMP_CHARS = 420;
   const MAX_APP_CHIPS = 4;
+  const STATUS_MS = 1600;   // how long "Copied" feedback stays up
   const ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
 
   const $ = id => document.getElementById(id);
   const q = $('q'), feed = $('feed'), chips = $('chips'), scroller = $('scroller');
+  const statusEl = $('status'), countEl = $('count');
 
   let entries = [];
   let sig = '';
   let seen = null;          // keys already rendered once; null until first load
+  let hotkey = null;        // {keys, hold} from the user's settings; null until read (or unreadable)
   const expanded = new Set();
 
   // ── keyboard selection ──
@@ -294,6 +311,7 @@
   const slug = s => s.toLowerCase().replace(/[\s._-]+/g, '');
   const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const words = t => (t.trim().match(/\S+/g) || []).length;
+  const plural = (n, noun) => `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`;
 
   // ── app names ──
   // Entries carry the real app name recorded at dictation time ("Claude Code", not "claude").
@@ -392,7 +410,7 @@
     d.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
     const t = document.createElement('div');
     const s = document.createElement('strong'); s.textContent = title;
-    t.append(s, body);
+    t.append(s, ...[].concat(body));
     d.append(t);
     return d;
   }
@@ -421,7 +439,7 @@
     const tag = document.createElement('span');
     tag.className = 'app-tag'; tag.textContent = e.label;
     meta.append(tag);
-    const facts = [`${words(text)} words`];
+    const facts = [plural(words(text), 'word')];
     if (e.duration_s) facts.push(`${(+e.duration_s).toFixed(1)}s`);
     facts.forEach(f => {
       const dot = document.createElement('i'); dot.textContent = '·';
@@ -455,16 +473,56 @@
     return row;
   }
 
-  // Copies `text` and flips `btn` to its "Copied" state for a moment.
+  // Copies `text` and flips `btn` to its "Copied" state for a moment. Returns false on failure.
   async function copyText(btn, text) {
-    await window.pywebview.api.copy(text);
+    try {
+      await window.pywebview.api.copy(text);
+    } catch (err) {
+      console.error(err);
+      setStatus("Couldn't copy. Try again.", 'error', STATUS_MS * 2);
+      return false;
+    }
+    setStatus('Copied to clipboard', 'ok', STATUS_MS);
     btn.classList.add('done');
     btn.innerHTML = ICON_CHECK + '<span>Copied</span>';
     clearTimeout(btn._t);
     btn._t = setTimeout(() => {
       btn.classList.remove('done');
       btn.innerHTML = ICON_COPY + '<span>Copy</span>';
-    }, 1600);
+    }, STATUS_MS);
+    return true;
+  }
+
+  // ── footer status + count ──
+  // Status is empty when all is well; it speaks up for copies and read errors.
+  // role="status" makes screen readers announce each message too.
+  let statusTimer;
+  function setStatus(text, tone, clearAfterMs) {
+    clearTimeout(statusTimer);
+    statusEl.textContent = text;
+    statusEl.dataset.tone = tone || '';
+    if (clearAfterMs) statusTimer = setTimeout(() => setStatus(''), clearAfterMs);
+  }
+  function renderCount(isFiltered) {
+    const total = entries.length;
+    countEl.textContent = !total ? ''
+      : isFiltered ? `${shown.length.toLocaleString()} of ${plural(total, 'dictation')}`
+      : plural(total, 'dictation');
+  }
+
+  // First-run hint naming the real hotkey: "Hold [Ctrl] + [Alt] and start talking…".
+  function firstRunHint() {
+    const tail = ' and start talking. Your transcripts show up here as you go.';
+    if (!hotkey || !hotkey.keys) return 'Use your dictation hotkey' + tail;
+    const parts = [hotkey.hold ? 'Hold ' : 'Press '];
+    hotkey.keys.split('+').forEach((k, i) => {
+      if (i) parts.push(' + ');
+      const kbd = document.createElement('kbd');
+      kbd.textContent = k.charAt(0) + k.slice(1).toLowerCase();  // "CTRL" -> "Ctrl"
+      parts.push(kbd);
+    });
+    parts.push(tail);
+    return parts;
   }
 
   // Index of the selected entry in `shown`; falls back to the newest match.
@@ -492,8 +550,7 @@
   async function copySelected(andClose) {
     const i = selIndex(), row = rows[i];
     if (!row) return;
-    await copyText(row.querySelector('.copy'), shown[i].text || '');
-    if (andClose) window.pywebview.api.close();
+    if (await copyText(row.querySelector('.copy'), shown[i].text || '') && andClose) window.pywebview.api.close();
   }
 
   // Re-renders for a new query, starting again from the newest match at the top.
@@ -526,7 +583,7 @@
 
     const frag = document.createDocumentFragment();
     if (!entries.length) {
-      frag.append(emptyState('Nothing here yet', 'Hold your dictation hotkey and start talking — transcripts show up here as you go.'));
+      frag.append(emptyState('No dictations yet', firstRunHint()));
     } else if (!shown.length) {
       const where = app ? ` in app:${app}` : '';
       frag.append(emptyState('No matches', terms.length
@@ -556,6 +613,7 @@
     });
 
     feed.replaceChildren(frag);
+    renderCount(Boolean(app || terms.length));
     paintSelection(false);
     if (anchorOffset !== null) scroller.scrollTop = scroller.scrollHeight - anchorOffset;
     seen = new Set(entries.map(keyOf));
@@ -564,6 +622,7 @@
   async function poll() {
     try {
       const res = await window.pywebview.api.poll(sig);
+      if (statusEl.dataset.tone === 'error-read') setStatus('');
       if (res) {
         sig = res.sig;
         entries = withLabels(res.entries || []);
@@ -571,6 +630,7 @@
       }
     } catch (err) {
       console.error(err);
+      setStatus("Can't read transcripts. Retrying…", 'error-read');
     } finally {
       setTimeout(poll, POLL_MS);
     }
@@ -601,7 +661,14 @@
     }
   });
 
-  window.addEventListener('pywebviewready', () => { q.focus(); poll(); });
+  window.addEventListener('pywebviewready', () => {
+    q.focus();
+    poll();
+    window.pywebview.api.hotkey().then(h => {
+      hotkey = h;
+      if (seen !== null && !entries.length) renderFeed();  // first-run hint already showing
+    }).catch(err => console.error(err));
+  });
 })();
 </script>
 </body>

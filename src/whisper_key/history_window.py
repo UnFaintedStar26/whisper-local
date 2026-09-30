@@ -48,6 +48,21 @@ class Api:
         pyperclip.copy(text or '')
         return True
 
+    # The user's recording hotkey, formatted like the rest of the app, so the empty
+    # state can say exactly what to press. None if settings can't be read.
+    def hotkey(self):
+        try:
+            from .config_manager import ConfigManager
+            from .utils import beautify_hotkey
+            hk = ConfigManager(quiet=True).get_hotkey_config()
+            return {
+                'keys': beautify_hotkey(hk.get('recording_hotkey', '')),
+                'hold': hk.get('recording_mode') == 'push_to_talk',
+            }
+        except Exception as e:
+            logger.warning(f"Could not read hotkey for history empty state: {e}")
+            return None
+
     # Shift+Enter ("copy and close") and Esc on an empty search dismiss the window.
     def close(self):
         import webview
