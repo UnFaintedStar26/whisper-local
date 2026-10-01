@@ -93,7 +93,9 @@ This is a **community tool**, not a product. There's no support SLA, no roadmap 
 - 📜 **Recent transcriptions** — last 10 results in the tray menu, click to copy back
 - 🔧 **Settings backup/restore** — `--export-settings` / `--import-settings` for portability
 - 🖥️ **Settings UI** — `whisper-local --settings` opens a GUI settings window (no YAML editing required)
-- 📜 **Transcript history** — `whisper-local --history` opens a searchable log of everything you've dictated
+- 📜 **Transcript history.** `whisper-local --history` opens a searchable log of everything you've dictated.
+
+  Saved prompts live in that same window. Press Ctrl+2 to open Prompts, or press Ctrl+S on a dictation to keep the text. Add a title, a purpose, and a note. The window stores them in `prompts.yaml` next to your other settings, and you can edit the file by hand. `--export-settings` includes the file.
 - 🔔 **Opt-in update notifications** — daily GitHub release check, fully offline by default (`update_check.enabled: true` to opt in)
 - 🎚️ **Noise suppression** — spectral gating via `noisereduce`, off by default (`pip install 'whisper-local[noise]'`)
 - 🩺 **`--selftest`** — one-command sanity check (mic, model, transcription, clipboard) — perfect for first-launch

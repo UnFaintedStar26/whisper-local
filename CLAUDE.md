@@ -3,6 +3,8 @@ https://github.com/drajb/whisper-local (personal fork of https://github.com/PinW
 @docs/project-index.md
 @docs/platform-abstraction.md
 
+Transcript History in that table is the pywebview window (`history_ui.html`). The Prompt Library row lives in `docs/project-index.md`.
+
 - Test app startup: `/test-from-wsl` (launch only, no interaction)
 - Ask user for real test before committing
 - Prefer elegant code that is modular and consistent
