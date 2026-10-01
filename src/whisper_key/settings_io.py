@@ -13,6 +13,7 @@ EXPORTABLE_FILES = [
     "profiles.yaml",
     "app_rules.yaml",
     "transforms.yaml",
+    "prompts.yaml",
 ]
 
 

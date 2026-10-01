@@ -1000,5 +1000,311 @@ class StreamingDeliveryWorkerTests(unittest.TestCase):
         self.assertEqual(delivered, ["a "])
 
 
+class PromptLibraryTests(unittest.TestCase):
+    # The library imports the path helper by name, so the patch target is the module.
+    def _isolated(self):
+        import tempfile
+        import unittest.mock as mock
+        from whisper_key import prompt_library as pl
+        tmp = tempfile.TemporaryDirectory()
+        patch = mock.patch('whisper_key.prompt_library.get_user_app_data_path', return_value=tmp.name)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.addCleanup(tmp.cleanup)
+        return pl
+
+    def test_capture_is_idempotent_and_keeps_edited_body(self):
+        pl = self._isolated()
+        first = pl.mutate(pl.Capture('dictation-key', 'original body'))
+        self.assertTrue(first.changed)
+        self.assertEqual(first.prompt.body, 'original body')
+        edited = pl.mutate(pl.Save(
+            id=first.prompt.id, title='Kept title', purpose='Bug fix', note='a note',
+            body='edited body', source='dictation-key', base_rev=first.prompt.rev,
+        ))
+        self.assertTrue(edited.changed)
+        again = pl.mutate(pl.Capture('dictation-key', 'original body'))
+        self.assertFalse(again.changed)
+        self.assertEqual(again.prompt.body, 'edited body')
+        self.assertEqual(again.prompt.id, first.prompt.id)
+        loaded = pl.load_prompts()
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0].body, 'edited body')
+
+    def test_save_load_keeps_body_byte_identical(self):
+        pl = self._isolated()
+        bodies = [
+            '  leading',
+            'trailing  ',
+            '\nblank first line',
+            '# not a comment',
+            'key: value',
+            '---',
+            '\n  leading\ntrailing  \n# hash\nkey: value\n---\n',
+        ]
+        saved = []
+        for body in bodies:
+            result = pl.mutate(pl.Save(
+                id=None, title='Title', purpose='Notes', note='keep',
+                body=body, source='', base_rev=None,
+            ))
+            self.assertTrue(result.changed)
+            saved.append(result.prompt.id)
+        loaded = {prompt.id: prompt.body for prompt in pl.load_prompts()}
+        self.assertEqual(len(loaded), len(bodies))
+        for pid, body in zip(saved, bodies):
+            self.assertEqual(loaded[pid], body)
+
+    def test_hand_edit_changes_rev_and_survives_stale_save(self):
+        pl = self._isolated()
+        first = pl.mutate(pl.Save(
+            id=None, title='Keep me', purpose='Bug fix', note='n',
+            body='alpha-unique-body-token', source='', base_rev=None,
+        ))
+        path = pl.prompts_path()
+        original = path.read_text(encoding='utf-8')
+        self.assertIn('alpha-unique-body-token', original)
+        path.write_text(original.replace('alpha-unique-body-token', 'beta-hand-edit-token'), encoding='utf-8')
+        loaded = pl.load_prompts()
+        self.assertEqual(loaded[0].body, 'beta-hand-edit-token')
+        self.assertNotEqual(loaded[0].rev, first.prompt.rev)
+        before = path.read_bytes()
+        stale = pl.mutate(pl.Save(
+            id=first.prompt.id, title='Keep me', purpose='Bug fix', note='n',
+            body='gamma-from-stale-window', source='', base_rev=first.prompt.rev,
+        ))
+        self.assertIsInstance(stale, pl.Conflict)
+        self.assertEqual(stale.kind, 'changed')
+        self.assertEqual(stale.current.body, 'beta-hand-edit-token')
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(pl.load_prompts()[0].body, 'beta-hand-edit-token')
+
+    def test_same_fields_with_old_base_rev_are_unchanged(self):
+        pl = self._isolated()
+        first = pl.mutate(pl.Save(
+            id=None, title='T', purpose='P', note='N', body='B', source='', base_rev=None,
+        ))
+        before = pl.prompts_path().read_bytes()
+        again = pl.mutate(pl.Save(
+            id=first.prompt.id, title='T', purpose='P', note='N', body='B',
+            source='', base_rev='0' * 12,
+        ))
+        self.assertIsInstance(again, pl.Wrote)
+        self.assertFalse(again.changed)
+        self.assertEqual(again.prompt.body, 'B')
+        self.assertEqual(pl.prompts_path().read_bytes(), before)
+
+    def test_delete_is_idempotent_and_stale_rev_conflicts(self):
+        pl = self._isolated()
+        first = pl.mutate(pl.Save(
+            id=None, title='T', purpose='', note='', body='to-delete', source='', base_rev=None,
+        ))
+        deleted = pl.mutate(pl.Delete(first.prompt.id, first.prompt.rev))
+        self.assertTrue(deleted.changed)
+        self.assertIsNone(deleted.prompt)
+        again = pl.mutate(pl.Delete(first.prompt.id, first.prompt.rev))
+        self.assertFalse(again.changed)
+        self.assertIsNone(again.prompt)
+        self.assertEqual(pl.load_prompts(), [])
+        second = pl.mutate(pl.Save(
+            id=None, title='T', purpose='', note='', body='alive', source='', base_rev=None,
+        ))
+        changed = pl.mutate(pl.Save(
+            id=second.prompt.id, title='T', purpose='', note='', body='alive-edited',
+            source='', base_rev=second.prompt.rev,
+        ))
+        self.assertTrue(changed.changed)
+        before = pl.prompts_path().read_bytes()
+        stale = pl.mutate(pl.Delete(second.prompt.id, second.prompt.rev))
+        self.assertIsInstance(stale, pl.Conflict)
+        self.assertEqual(stale.kind, 'changed')
+        self.assertEqual(pl.prompts_path().read_bytes(), before)
+        self.assertEqual(pl.load_prompts()[0].body, 'alive-edited')
+
+    def test_malformed_file_is_not_overwritten(self):
+        pl = self._isolated()
+        path = pl.prompts_path()
+        path.write_bytes(b':\n  - [\n')
+        before = path.read_bytes()
+        with self.assertRaises(pl.PromptFileError):
+            pl.mutate(pl.Save(
+                id=None, title='T', purpose='', note='', body='nope', source='', base_rev=None,
+            ))
+        self.assertEqual(path.read_bytes(), before)
+        path.write_text('other: 1\n', encoding='utf-8')
+        before = path.read_bytes()
+        with self.assertRaises(pl.PromptFileError):
+            pl.load_prompts()
+        with self.assertRaises(pl.PromptFileError):
+            pl.mutate(pl.Delete('a' * 12, 'b' * 12))
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_two_threads_both_persist(self):
+        import threading
+        pl = self._isolated()
+        barrier = threading.Barrier(2)
+        errors = []
+
+        def work(body):
+            try:
+                barrier.wait(timeout=5)
+                pl.mutate(pl.Capture(body, body))
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=work, args=(f'body-{i}',)) for i in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(prompt.body for prompt in pl.load_prompts()), ['body-0', 'body-1'])
+
+    def test_control_characters_round_trip_and_list_loads(self):
+        pl = self._isolated()
+        bodies = ['a\x1b[0m\nb', 'a\u2028b\nc', 'a\x00b\nc']
+        saved = []
+        for body in bodies:
+            result = pl.mutate(pl.Save(
+                id=None, title='T', purpose='', note='', body=body, source='', base_rev=None,
+            ))
+            self.assertTrue(result.changed)
+            saved.append(result.prompt.id)
+        loaded = {prompt.id: prompt.body for prompt in pl.load_prompts()}
+        self.assertEqual(len(loaded), len(bodies))
+        for pid, body in zip(saved, bodies):
+            self.assertEqual(loaded[pid], body)
+
+    def test_crlf_round_trip_and_identical_retry_is_unchanged(self):
+        pl = self._isolated()
+        first = pl.mutate(pl.Save(
+            id=None, title='T', purpose='P', note='N', body='line\r\nnext\r', source='', base_rev=None,
+        ))
+        self.assertEqual(first.prompt.body, 'line\nnext\n')
+        self.assertEqual(pl.load_prompts()[0].body, 'line\nnext\n')
+        before = pl.prompts_path().read_bytes()
+        again = pl.mutate(pl.Save(
+            id=first.prompt.id, title='T', purpose='P', note='N', body='line\r\nnext\r',
+            source='', base_rev='0' * 12,
+        ))
+        self.assertIsInstance(again, pl.Wrote)
+        self.assertFalse(again.changed)
+        self.assertEqual(again.prompt.body, 'line\nnext\n')
+        self.assertEqual(pl.prompts_path().read_bytes(), before)
+
+    def test_plain_scalars_from_hand_edit_load(self):
+        pl = self._isolated()
+        path = pl.prompts_path()
+        path.write_text(
+            "prompts:\n"
+            "- id: abc123abc123\n"
+            "  title: true\n"
+            "  purpose: 12\n"
+            "  note: 1.5\n"
+            "  body: hello-scalar\n"
+            "  created: 2020-01-02\n"
+            "  updated: 2020-01-02T03:04:05\n",
+            encoding='utf-8',
+        )
+        loaded = pl.load_prompts()
+        self.assertEqual(len(loaded), 1)
+        prompt = loaded[0]
+        self.assertEqual(prompt.title, 'True')
+        self.assertEqual(prompt.purpose, '12')
+        self.assertEqual(prompt.note, '1.5')
+        self.assertEqual(prompt.body, 'hello-scalar')
+        self.assertEqual(prompt.created, '2020-01-02')
+        self.assertEqual(prompt.updated, '2020-01-02T03:04:05')
+
+    def test_duplicate_ids_raise(self):
+        pl = self._isolated()
+        path = pl.prompts_path()
+        entry = (
+            "  - id: abc123abc123\n"
+            "    title: T\n"
+            "    purpose: ''\n"
+            "    note: ''\n"
+            "    body: one\n"
+            "    source: ''\n"
+            "    created: 't'\n"
+            "    updated: 't'\n"
+        )
+        path.write_text('prompts:\n' + entry + entry, encoding='utf-8')
+        before = path.read_bytes()
+        with self.assertRaises(pl.PromptFileError) as raised:
+            pl.load_prompts()
+        self.assertIn('abc123abc123', str(raised.exception))
+        with self.assertRaises(pl.PromptFileError) as raised:
+            pl.mutate(pl.Save(
+                id=None, title='T', purpose='', note='', body='new', source='', base_rev=None,
+            ))
+        self.assertIn('abc123abc123', str(raised.exception))
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_hand_edit_just_before_replace_is_not_lost(self):
+        # A write that lands after the read and before replace is merged, not overwritten.
+        import unittest.mock as mock
+        pl = self._isolated()
+        pl.mutate(pl.Save(
+            id=None, title='T', purpose='', note='', body='keep-me', source='', base_rev=None,
+        ))
+        real = pl._file_sig
+        state = {'checks': 0}
+
+        def sig(path):
+            state['checks'] += 1
+            if state['checks'] == 2:
+                text = path.read_text(encoding='utf-8')
+                path.write_text(text.replace('keep-me', 'hand-kept-token'), encoding='utf-8')
+            return real(path)
+
+        with mock.patch.object(pl, '_file_sig', sig):
+            added = pl.mutate(pl.Save(
+                id=None, title='T', purpose='', note='', body='new-body', source='', base_rev=None,
+            ))
+        self.assertTrue(added.changed)
+        self.assertEqual(
+            sorted(prompt.body for prompt in pl.load_prompts()),
+            ['hand-kept-token', 'new-body'],
+        )
+
+    def test_round_trip_mismatch_does_not_replace(self):
+        import unittest.mock as mock
+        pl = self._isolated()
+        first = pl.mutate(pl.Save(
+            id=None, title='T', purpose='', note='', body='safe-body', source='', base_rev=None,
+        ))
+        path = pl.prompts_path()
+        before = path.read_bytes()
+        real = pl._yaml
+
+        def bad_yaml():
+            yaml = real()
+
+            def dump(doc, handle):
+                handle.write(
+                    "prompts:\n"
+                    "- id: 'abcdefabcdef'\n"
+                    "  title: T\n"
+                    "  purpose: ''\n"
+                    "  note: ''\n"
+                    "  body: DIFFERENT\n"
+                    "  source: ''\n"
+                    "  created: 'x'\n"
+                    "  updated: 'x'\n"
+                )
+
+            yaml.dump = dump
+            return yaml
+
+        with mock.patch.object(pl, '_yaml', bad_yaml):
+            with self.assertRaises(pl.PromptFileError):
+                pl.mutate(pl.Save(
+                    id=None, title='T', purpose='', note='', body='other-body', source='', base_rev=None,
+                ))
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(pl.load_prompts()[0].body, first.prompt.body)
+
+
 if __name__ == "__main__":
     unittest.main()
