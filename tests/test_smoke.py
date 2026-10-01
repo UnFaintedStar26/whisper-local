@@ -1160,6 +1160,43 @@ class PromptLibraryTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(sorted(prompt.body for prompt in pl.load_prompts()), ['body-0', 'body-1'])
 
+    def test_prompt_save_older_seq_is_stale_and_does_not_write(self):
+        pl = self._isolated()
+        from whisper_key.history_window import Api
+        api = Api('unused')
+        raw = {'title': 'T', 'purpose': '', 'note': '', 'body': 'one', 'source': ''}
+        first = api.prompt_save(dict(raw), None, 2)
+        self.assertEqual(first['status'], 'saved')
+        self.assertEqual(first['prompt']['body'], 'one')
+        older = api.prompt_save(
+            {'id': first['prompt']['id'], 'title': 'T', 'purpose': '', 'note': '',
+             'body': 'two', 'source': ''},
+            first['prompt']['rev'], 1,
+        )
+        self.assertEqual(older, {'status': 'stale'})
+        self.assertEqual(pl.load_prompts()[0].body, 'one')
+        newer = api.prompt_save(
+            {'id': first['prompt']['id'], 'title': 'T', 'purpose': '', 'note': '',
+             'body': 'two', 'source': ''},
+            first['prompt']['rev'], 3,
+        )
+        self.assertEqual(newer['status'], 'saved')
+        self.assertEqual(pl.load_prompts()[0].body, 'two')
+
+    def test_prompts_poll_returns_none_for_unchanged_sig(self):
+        pl = self._isolated()
+        from whisper_key.history_window import Api
+        api = Api('unused')
+        first = api.prompts_poll('')
+        self.assertEqual(first['prompts'], [])
+        self.assertIsNone(api.prompts_poll(first['sig']))
+        saved = api.prompt_capture('dictation-key', 'captured text')
+        self.assertTrue(saved['created'])
+        second = api.prompts_poll(first['sig'])
+        self.assertEqual([item['body'] for item in second['prompts']], ['captured text'])
+        self.assertIsNone(api.prompts_poll(second['sig']))
+        self.assertEqual(pl.load_prompts()[0].body, 'captured text')
+
     def test_control_characters_round_trip_and_list_loads(self):
         pl = self._isolated()
         bodies = ['a\x1b[0m\nb', 'a\u2028b\nc', 'a\x00b\nc']
@@ -1304,6 +1341,51 @@ class PromptLibraryTests(unittest.TestCase):
                 ))
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(pl.load_prompts()[0].body, first.prompt.body)
+
+    def test_capture_key_is_a_hash_and_body_edit_keeps_dedupe(self):
+        import hashlib
+        pl = self._isolated()
+        from whisper_key.history_window import Api
+        text = 'original body'
+        timestamp = '2024-05-06T07:08:09'
+        digest = hashlib.sha1(text.encode('utf-8')).hexdigest()[:12]
+        key = f'{timestamp}|{digest}'
+        api = Api('unused')
+        first = api.prompt_capture(timestamp, text)
+        self.assertTrue(first['created'])
+        self.assertEqual(first['prompt']['source'], key)
+        self.assertNotIn(text, first['prompt']['source'])
+        edited = api.prompt_save(
+            {
+                'id': first['prompt']['id'], 'title': 'T', 'purpose': '', 'note': '',
+                'body': 'edited body', 'source': first['prompt']['source'],
+            },
+            first['prompt']['rev'], 1,
+        )
+        self.assertEqual(edited['status'], 'saved')
+        self.assertEqual(edited['prompt']['source'], key)
+        again = api.prompt_capture(timestamp, text)
+        self.assertFalse(again['created'])
+        self.assertEqual(again['prompt']['id'], first['prompt']['id'])
+        self.assertEqual(again['prompt']['body'], 'edited body')
+        raw = pl.prompts_path().read_text(encoding='utf-8')
+        self.assertIn(key, raw)
+        self.assertNotIn(f'{timestamp}|{text}', raw)
+
+    def test_title_bar_close_asks_once_then_closes(self):
+        from whisper_key.history_window import Api, page_flush_outcome
+        api = Api('unused')
+        self.assertIs(api.allow_close(), False)
+        self.assertIs(api.allow_close(), True)
+        permitted = Api('unused')
+        permitted._close_permit = True
+        self.assertIs(permitted.allow_close(), True)
+
+        def boom():
+            raise RuntimeError('evaluate_js failed')
+
+        self.assertEqual(page_flush_outcome(boom), 'close')
+        self.assertEqual(page_flush_outcome(lambda: None), 'asked')
 
 
 if __name__ == "__main__":
