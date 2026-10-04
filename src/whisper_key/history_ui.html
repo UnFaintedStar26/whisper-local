@@ -143,9 +143,106 @@
     background: var(--accent-soft); border-color: transparent; color: var(--accent);
   }
   .chip[aria-pressed="true"] span { color: inherit; }
-  .chip:focus-visible, .copy:focus-visible, .more:focus-visible {
+  .chip:focus-visible, .copy:focus-visible, .more:focus-visible,
+  .switch button:focus-visible, .edit:focus-visible, .back:focus-visible,
+  .editor-actions button:focus-visible, .banner button:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
+
+  /* The view switch stays outside .chips and .keys so a short window still shows it. */
+  .head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .head-row .search { flex: 1 1 12rem; min-width: 0; }
+  .search[hidden] { display: none; }
+  .switch {
+    display: flex; flex: none; padding: 2px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  }
+  .switch button {
+    border: 0; background: transparent; border-radius: 999px;
+    padding: 6px 10px; font-size: 13px; color: var(--muted); cursor: pointer;
+    transition: background .16s, color .16s;
+  }
+  .switch button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+  /* --muted, not --faint: the hint must clear 4.5:1 on the dark --surface too. */
+  .switch kbd {
+    margin-left: 6px; font: 10px var(--font-mono); color: var(--muted);
+    border: 0; padding: 0;
+  }
+
+  .prompt {
+    position: relative;
+    display: grid; grid-template-columns: 1fr auto; gap: 8px 12px;
+    padding: 12px; margin: 0 -12px;
+    border-radius: var(--radius);
+    transition: background .16s;
+  }
+  .prompt:hover { background: var(--hover-row); }
+  .prompt.is-selected {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  .prompt-title { display: block; font-size: 15px; }
+  .prompt-note {
+    margin: 2px 0 0; color: var(--muted); font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .prompt-body {
+    margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .prompt-body.clamp {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .prompt-actions { display: flex; gap: 6px; align-self: start; }
+  .prompt .copy, .editor-actions .copy { opacity: 1; transform: none; }
+  .editor-actions .copy::after { content: none; }
+  /* Same size as Done and Delete; .copy keeps its icon and copied-state colours. */
+  .editor-actions .copy { align-self: auto; font-size: inherit; padding: 6px 12px; border-radius: 8px; }
+  .edit {
+    border: 1px solid var(--line); background: var(--surface);
+    border-radius: 8px; padding: 5px 10px;
+    font-size: 12px; color: var(--muted); cursor: pointer;
+    transition: color .16s, border-color .16s, background .16s;
+  }
+  .edit:hover, .back:hover, .editor-actions button:hover, .banner button:hover {
+    color: var(--text); border-color: var(--faint);
+  }
+
+  .editor-wrap {
+    max-width: var(--content-max);
+    padding: 8px var(--gutter) 32px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .editor-bar { display: flex; align-items: center; gap: 12px; padding-top: 14px; }
+  .editor-state { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .editor-state[data-tone="ok"] { color: var(--live); }
+  .editor-state[data-tone^="error"] { color: var(--accent); }
+  .back, .editor-actions button, .banner button {
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer;
+    transition: background .16s, border-color .16s, color .16s;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  .field input, .field textarea {
+    width: 100%;
+    border: 1px solid var(--control-line); border-radius: var(--radius);
+    background: var(--surface); color: var(--text);
+    font: 15px/1.5 var(--font); padding: 8px 10px; outline: none;
+    transition: border-color .16s, box-shadow .16s;
+  }
+  .field textarea { resize: vertical; min-height: 88px; }
+  .field textarea.body { min-height: 140px; }
+  .field input:focus, .field textarea:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .banner {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    border: 1px solid var(--accent); background: var(--surface); color: var(--text);
+    border-radius: var(--radius); padding: 10px 12px;
+  }
+  .banner[hidden] { display: none; }
+  .banner p { margin: 0; flex: 1; min-width: 16ch; }
+  .editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  main[hidden] { display: none; }
 
   /* ── feed ── */
   main { flex: 1; overflow-y: auto; scrollbar-gutter: stable; }
@@ -226,7 +323,7 @@
   .copy svg { width: 14px; height: 14px; }
   .entry:hover .copy, .entry:focus-within .copy, .entry.is-selected .copy,
   .copy.done, .copy.failed { opacity: 1; transform: none; }
-  .copy::after {
+  .entry .copy::after {
     content: "↵"; margin-left: 2px; font: 12px var(--font-mono); color: var(--muted);
     visibility: hidden;
   }
@@ -315,6 +412,7 @@
     header { padding-top: 16px; }
     .feed { padding-bottom: 32px; }
     .entry { grid-template-columns: 1fr auto; }
+    .prompt { grid-template-columns: 1fr; }
     .time { grid-column: 1 / -1; }
     .entry + .entry::before { left: 12px; }
     .copy { opacity: 1; transform: none; }
@@ -325,26 +423,62 @@
 <div class="app">
   <header>
     <h1 class="sr-only">Transcript History</h1>
-    <label class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" type="search" placeholder="Search everything you've said" autocomplete="off" spellcheck="false" aria-label="Search transcripts" autofocus>
-      <kbd>Ctrl F</kbd>
-    </label>
+    <div class="head-row">
+      <div class="switch" role="tablist" aria-label="View">
+        <button type="button" id="tabDict" role="tab" aria-selected="true" aria-controls="scroller">Dictations<kbd>Ctrl 1</kbd></button>
+        <button type="button" id="tabProm" role="tab" aria-selected="false" aria-controls="promptScroller">Prompts<kbd>Ctrl 2</kbd></button>
+      </div>
+      <label class="search" id="searchLabel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Search everything you've said" autocomplete="off" spellcheck="false" aria-label="Search transcripts" autofocus>
+        <kbd>Ctrl F</kbd>
+      </label>
+    </div>
     <div class="chips" id="chips" role="group" aria-label="Filter by app"></div>
   </header>
   <div class="stage">
     <main id="scroller">
       <div class="feed" id="feed"></div>
     </main>
+    <main id="promptScroller" hidden>
+      <div class="feed" id="promptFeed"></div>
+    </main>
+    <main id="editorScroller" hidden>
+      <div class="editor-wrap" id="editor">
+        <div class="editor-bar">
+          <button type="button" class="back" id="editorBack">Back</button>
+          <span class="editor-state" id="editorState"></span>
+        </div>
+        <div class="banner" id="conflict" hidden>
+          <p id="conflictText"></p>
+          <button type="button" id="keepMine">Keep mine</button>
+          <button type="button" id="useTheirs">Use theirs</button>
+          <button type="button" id="discardEdit">Discard</button>
+        </div>
+        <label class="field">Title
+          <input id="fTitle" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Purpose
+          <input id="fPurpose" type="text" list="purposeList" autocomplete="off" spellcheck="false">
+        </label>
+        <datalist id="purposeList"></datalist>
+        <label class="field">Prompt
+          <textarea id="fBody" class="body" spellcheck="true"></textarea>
+        </label>
+        <label class="field">Note
+          <textarea id="fNote" spellcheck="true" placeholder="What it's for and how to use it"></textarea>
+        </label>
+        <div class="editor-actions">
+          <button type="button" id="editorDone">Done</button>
+          <button type="button" class="copy" id="editorCopy">Copy</button>
+          <button type="button" id="editorDelete">Delete</button>
+        </div>
+      </div>
+    </main>
     <button class="new-pill" id="newPill" type="button" hidden></button>
   </div>
   <footer class="bar">
-    <ul class="keys" aria-label="Keyboard shortcuts">
-      <li><kbd>↑↓</kbd>move</li>
-      <li><kbd>Enter</kbd>copy</li>
-      <li><kbd>⇧Enter</kbd>copy &amp; close</li>
-      <li><kbd>Esc</kbd>clear / close</li>
-    </ul>
+    <ul class="keys" id="keys" aria-label="Keyboard shortcuts"></ul>
     <span class="status" id="status"></span>
     <span class="count" id="count"></span>
   </footer>
@@ -366,6 +500,29 @@
   const $ = id => document.getElementById(id);
   const q = $('q'), feed = $('feed'), chips = $('chips'), scroller = $('scroller');
   const statusEl = $('status'), countEl = $('count'), srEl = $('sr'), pill = $('newPill');
+  const searchLabel = $('searchLabel'), promptFeed = $('promptFeed'), promptScroller = $('promptScroller');
+
+  // Dictations and Prompts each keep a query. The editor hides the search box.
+  let view = 'dictations';
+  const queries = { dictations: '', prompts: '' };
+  let prompts = [];
+  let promptSig = '';
+  let promptUnreadable = false;
+  let promptShown = [];
+  let promptRows = [];
+  let selId = null;
+  let followFirst = true;
+  let promptSelectedRow = null;
+  const promptRowCache = new Map();
+  const promptGroupCache = new Map();
+  let undoPrompt = null;
+  let undoTimer = 0;
+  // Bumped on every editor open or leave. Capture responses from an older epoch
+  // must not open over the editor the user has since started.
+  let epoch = 0;
+  // The open editor. Token, ack rev, dirty bit, and save chain die together.
+  let session = null;
+  const seqById = new Map();
 
   let entries = [];
   let sig = '';
@@ -641,12 +798,17 @@
   const isPaused = () => pollFailures >= PAUSE_AFTER_FAILURES;
   function setStatus(text, tone, clearAfterMs) {
     clearTimeout(statusTimer);
+    // A new status replaces the undo toast, so the restore goes with it.
+    undoPrompt = null;
+    clearTimeout(undoTimer);
     statusEl.textContent = text;
     statusEl.dataset.tone = tone || '';
     if (clearAfterMs) statusTimer = setTimeout(showRestingStatus, clearAfterMs);
   }
   function showRestingStatus() {
-    if (isPaused()) setStatus('Paused, reconnecting…', 'error');
+    if (view === 'prompts' && promptUnreadable) {
+      setStatus("Can't read prompts.yaml. Fix or move the file; nothing will be overwritten.", 'error');
+    } else if (view === 'dictations' && isPaused()) setStatus('Paused, reconnecting…', 'error');
     else setStatus('');
   }
   function renderCount(isFiltered) {
@@ -666,7 +828,7 @@
 
   // ── "N new ↑" cue ──
   function renderPill() {
-    pill.hidden = !unseenNew;
+    pill.hidden = view !== 'dictations' || !unseenNew;
     pill.textContent = `${unseenNew.toLocaleString()} new ↑`;
     pill.setAttribute('aria-label', `${plural(unseenNew, 'new dictation')}. Jump to top`);
   }
@@ -794,17 +956,34 @@
   // ── query ──
   // Re-renders for a new query from the newest match, and tells screen readers the result.
   function refresh() {
+    if (view === 'prompts') {
+      followFirst = true; selId = null; promptScroller.scrollTop = 0; renderPrompts();
+      if (q.value.trim()) announce(promptShown.length ? plural(promptShown.length, 'match', 'matches') : 'No matches');
+      return;
+    }
+    if (view === 'editor') return;
     selKey = null; scroller.scrollTop = 0; renderFeed();
     if (q.value.trim()) announce(shown.length ? plural(shown.length, 'match', 'matches') : 'No matches');
   }
   function setQuery(value) {
     clearTimeout(searchTimer);
     q.value = value;
+    if (view === 'dictations' || view === 'prompts') queries[view] = value;
     refresh();
   }
 
-  // Esc peels back one layer at a time: search words, then the app: filter, then the window.
+  // Esc peels back one layer at a time: search words, then the app:/purpose: filter, then the window.
+  // In the editor it never closes. It saves, then returns to the prompt list.
   function dismiss() {
+    if (view === 'editor') { leaveEditor(); return; }
+    if (view === 'prompts') {
+      const { purpose, terms } = parsePromptQuery(q.value);
+      if (terms.length) setQuery(purpose ? `purpose:${purpose} ` : '');
+      else if (q.value.trim()) setQuery('');
+      else window.pywebview.api.close();
+      q.focus();
+      return;
+    }
     const { app, terms } = parseQuery(q.value);
     if (terms.length) setQuery(app ? `app:${app} ` : '');
     else if (q.value.trim()) setQuery('');
@@ -815,9 +994,14 @@
   // ── feed ──
   // Reconciles the list in place. New rows landing above the reader are held in view by the
   // browser's scroll anchoring; if the reader is scrolled away, the "N new ↑" cue counts them.
+  // The box shows whichever list is on screen. Dictation polls must not filter on the prompts query.
+  function dictQuery() {
+    return view === 'dictations' ? q.value : queries.dictations;
+  }
+
   function renderFeed() {
-    const { app, terms } = parseQuery(q.value);
-    renderChips(app, terms);
+    const { app, terms } = parseQuery(dictQuery());
+    if (view === 'dictations') renderChips(app, terms);
     shown = entries.filter(e => matchesApp(e, app) && matchesTerms(e, terms));
 
     const nodes = [];
@@ -856,69 +1040,873 @@
 
     const hadFocus = feed.contains(document.activeElement);
     patchChildren(feed, nodes);
-    if (hadFocus && !feed.contains(document.activeElement)) q.focus();  // its row was filtered out
+    if (view === 'dictations' && hadFocus && !feed.contains(document.activeElement)) q.focus();
 
-    renderCount(Boolean(app || terms.length));
+    if (view === 'dictations') renderCount(Boolean(app || terms.length));
     paintSelection(false);
     if (arrived && scroller.scrollTop > NEAR_TOP_PX) { unseenNew += arrived; renderPill(); }
     seen = new Set(entries.map(keyOf));
   }
 
+  // ── prompts ──
+  // purpose: is the prompts-view twin of app:. Chips only write the token.
+  function parsePromptQuery(raw) {
+    let purpose = '';
+    const terms = [];
+    String(raw || '').toLowerCase().split(/\s+/).filter(Boolean).forEach(tok => {
+      if (tok.startsWith('purpose:')) purpose = tok.slice(8); else terms.push(tok);
+    });
+    return { purpose, terms };
+  }
+  const withoutPurpose = raw => raw.replace(/(^|\s)purpose:\S*/gi, ' ').trim();
+  function matchesPrompt(p, parsed) {
+    if (parsed.purpose) {
+      const label = p.purpose || 'No purpose';
+      const full = slug(label);
+      const token = parsed.purpose;
+      // Chip tokens are exact slugs. A typed purpose: partial may still be a
+      // substring, but not when that text is some chip's whole slug.
+      if (full !== token) {
+        let exact = false;
+        for (let i = 0; i < prompts.length; i++) {
+          if (slug(prompts[i].purpose || 'No purpose') === token) { exact = true; break; }
+        }
+        if (exact || !(full + '|' + label.toLowerCase()).includes(token)) return false;
+      }
+    }
+    const blob = `${p.title || ''}\n${p.purpose || ''}\n${p.note || ''}\n${p.body || ''}`.toLowerCase();
+    return parsed.terms.every(t => blob.includes(t));
+  }
+
+  function renderPurposeChips(parsed) {
+    const total = new Map(), hits = new Map();
+    prompts.forEach(p => {
+      const label = p.purpose || 'No purpose';
+      total.set(label, (total.get(label) || 0) + 1);
+      if (matchesPrompt(p, { purpose: '', terms: parsed.terms })) hits.set(label, (hits.get(label) || 0) + 1);
+    });
+    const top = [...total.keys()].sort((a, b) => total.get(b) - total.get(a)).slice(0, MAX_APP_CHIPS);
+    const allHits = [...hits.values()].reduce((n, c) => n + c, 0);
+    chips.textContent = '';
+    const make = (label, token, n) => {
+      const c = document.createElement('button');
+      c.type = 'button';
+      c.className = 'chip';
+      c.tabIndex = -1;
+      c.setAttribute('aria-pressed', String(parsed.purpose === token));
+      c.setAttribute('aria-label', `${label}, ${plural(n, 'prompt')}`);
+      c.append(label);
+      const s = document.createElement('span'); s.textContent = n.toLocaleString(); c.append(s);
+      c.onclick = () => {
+        const rest = withoutPurpose(q.value);
+        const next = token && parsed.purpose !== token ? `purpose:${token} ` : '';
+        setQuery(next + (rest ? rest + ' ' : ''));
+        q.focus();
+        q.setSelectionRange(q.value.length, q.value.length);
+      };
+      chips.append(c);
+    };
+    make('All', '', allHits);
+    top.forEach(label => make(label, slug(label), hits.get(label) || 0));
+    chips.hidden = top.length < 2;
+  }
+
+  function rememberPrompt(p) {
+    const i = prompts.findIndex(item => item.id === p.id);
+    if (i === -1) prompts.unshift(p); else prompts[i] = p;
+    prompts.sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
+  }
+  function forgetPrompt(id) {
+    prompts = prompts.filter(p => p.id !== id);
+    promptRowCache.delete(id);
+  }
+  const currentPrompt = id => prompts.find(p => p.id === id) || null;
+
+  // Groups follow their newest member, so the newest prompt is always the first row.
+  function groupedPrompts(list) {
+    const groups = new Map();
+    list.forEach(p => {
+      const key = p.purpose || '';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    });
+    return [...groups.entries()].sort((a, b) => (b[1][0].updated || '').localeCompare(a[1][0].updated || ''));
+  }
+
+  // Keyed by the raw purpose, '' when none, so a purpose named "No purpose"
+  // does not share the empty group's header.
+  function promptGroupHeader(purposeKey) {
+    let group = promptGroupCache.get(purposeKey);
+    if (!group) {
+      const el = document.createElement('h2');
+      el.className = 'day';
+      const label = purposeKey || 'No purpose';
+      el.append(document.createTextNode(label));
+      const count = document.createElement('em');
+      el.append(count);
+      group = { el, count };
+      promptGroupCache.set(purposeKey, group);
+    }
+    return group;
+  }
+
+  function createPromptRow(p) {
+    const row = document.createElement('article');
+    row.className = 'prompt';
+    const main = document.createElement('div');
+    const title = document.createElement('strong');
+    title.className = 'prompt-title';
+    const note = document.createElement('p');
+    note.className = 'prompt-note';
+    const body = document.createElement('p');
+    body.className = 'prompt-body clamp';
+    main.append(title, note, body);
+    const actions = document.createElement('div');
+    actions.className = 'prompt-actions';
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'copy';
+    copy.innerHTML = ICON_COPY + '<span>Copy</span>';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'edit';
+    edit.textContent = 'Edit';
+    actions.append(copy, edit);
+    row.append(main, actions);
+    const live = () => currentPrompt(p.id) || p;
+    row.addEventListener('click', () => selectPrompt(p.id));
+    row.addEventListener('focusin', () => selectPrompt(p.id));
+    row.addEventListener('dblclick', ev => {
+      if (ev.target.closest('button')) return;
+      openEditor(live(), { select: true });
+    });
+    copy.onclick = ev => { ev.stopPropagation(); copyText(copy, live().body || ''); };
+    edit.onclick = ev => { ev.stopPropagation(); openEditor(live(), { select: true }); };
+    let lastKey = null;
+    row.update = (item, terms) => {
+      const key = terms.join(' ') + '\0' + item.title + '\0' + item.note + '\0' + item.body;
+      if (key === lastKey) return;
+      lastKey = key;
+      title.textContent = '';
+      appendHighlighted(title, item.title || 'Untitled', terms);
+      note.hidden = !item.note;
+      note.textContent = '';
+      if (item.note) appendHighlighted(note, item.note, terms);
+      body.textContent = '';
+      appendHighlighted(body, item.body || '', terms);
+      copy.setAttribute('aria-label', `Copy: ${snippet(item.title || item.body || '', 40)}`);
+    };
+    return row;
+  }
+
+  // Real order. If the focused element moved, put focus back on it.
+  function patchChildrenFocused(parent, nodes) {
+    const active = document.activeElement;
+    const restore = active && parent.contains(active) ? active : null;
+    patchChildren(parent, nodes);
+    if (restore && restore.isConnected && document.activeElement !== restore) {
+      restore.focus({ preventScroll: true });
+    }
+  }
+
+  function promptSelIndex() {
+    if (!promptShown.length) return -1;
+    if (followFirst || selId == null) return 0;
+    const i = promptShown.findIndex(p => p.id === selId);
+    return i === -1 ? 0 : i;
+  }
+  function paintPromptSelection(reveal) {
+    if (promptSelectedRow) {
+      promptSelectedRow.classList.remove('is-selected');
+      promptSelectedRow.removeAttribute('aria-current');
+    }
+    const i = promptSelIndex();
+    promptSelectedRow = promptRows[i] || null;
+    if (!promptSelectedRow) return;
+    promptSelectedRow.classList.add('is-selected');
+    promptSelectedRow.setAttribute('aria-current', 'true');
+    if (reveal) i === 0 ? (promptScroller.scrollTop = 0) : promptSelectedRow.scrollIntoView({ block: 'nearest' });
+  }
+  function selectPromptIndex(i) {
+    if (i === 0) { followFirst = true; selId = null; }
+    else { followFirst = false; selId = promptShown[i].id; }
+  }
+  function selectPrompt(id) {
+    const i = promptShown.findIndex(p => p.id === id);
+    if (i === -1 || i === promptSelIndex()) return;
+    selectPromptIndex(i);
+    paintPromptSelection(false);
+  }
+  function movePrompt(delta) {
+    if (!promptShown.length) return;
+    const i = Math.min(promptShown.length - 1, Math.max(0, promptSelIndex() + delta));
+    selectPromptIndex(i);
+    paintPromptSelection(true);
+    const p = promptShown[i];
+    announce(`${p.title}: ${snippet(p.body || '', 80)} (${i + 1} of ${promptShown.length})`);
+  }
+  function copyPrompt(andClose) {
+    const i = promptSelIndex();
+    const p = promptShown[i], row = promptRows[i];
+    if (!p || !row) return;
+    copyText(row.querySelector('.copy'), p.body || '').then(ok => {
+      if (ok && andClose) window.pywebview.api.close();
+    });
+  }
+
+  function renderPromptCount(isFiltered) {
+    const total = prompts.length;
+    countEl.textContent = !total ? ''
+      : isFiltered ? `${promptShown.length.toLocaleString()} of ${plural(total, 'prompt')}`
+      : plural(total, 'prompt');
+  }
+
+  function renderPrompts() {
+    const parsed = parsePromptQuery(view === 'prompts' ? q.value : (queries.prompts || ''));
+    if (view === 'prompts') renderPurposeChips(parsed);
+    const nodes = [];
+    if (promptUnreadable) {
+      nodes.push(emptyState("Can't read prompts.yaml", 'Fix or move the file; nothing will be overwritten.'));
+      promptShown = []; promptRows = [];
+      patchChildren(promptFeed, nodes);
+      if (view === 'prompts') renderPromptCount(false);
+      return;
+    }
+    const filtered = prompts.filter(p => matchesPrompt(p, parsed));
+    const groups = groupedPrompts(filtered);
+    if (!prompts.length) {
+      nodes.push(emptyState('No saved prompts yet', 'In Dictations, select one and press Ctrl S to keep it here.'));
+    } else if (!filtered.length) {
+      nodes.push(emptyState('No matches', parsed.terms.length
+        ? `Nothing contains ${parsed.terms.length > 1 ? 'all of ' : ''}“${parsed.terms.join(' ')}”.`
+        : `No purpose matches “${parsed.purpose}”.`));
+    }
+    promptShown = [];
+    promptRows = [];
+    groups.forEach(([purpose, items]) => {
+      const label = purpose || 'No purpose';
+      const header = promptGroupHeader(purpose);
+      header.count.textContent = plural(items.length, 'prompt');
+      header.el.setAttribute('aria-label', `${label}, ${plural(items.length, 'prompt')}`);
+      nodes.push(header.el);
+      items.forEach(p => {
+        let row = promptRowCache.get(p.id);
+        if (!row) { row = createPromptRow(p); promptRowCache.set(p.id, row); }
+        row.update(p, parsed.terms);
+        nodes.push(row);
+        promptShown.push(p);
+        promptRows.push(row);
+      });
+    });
+    for (const id of promptRowCache.keys()) {
+      if (!prompts.some(p => p.id === id)) promptRowCache.delete(id);
+    }
+    const hadFocus = promptFeed.contains(document.activeElement);
+    patchChildrenFocused(promptFeed, nodes);
+    if (view === 'prompts' && hadFocus && !promptFeed.contains(document.activeElement)) q.focus();
+    if (view === 'prompts') renderPromptCount(Boolean(parsed.purpose || parsed.terms.length));
+    paintPromptSelection(false);
+  }
+
+  // ── editor ──
+  // seq must only increase for an id. Reopening the editor starts from the last one.
+  function nextSeq(id) {
+    const key = id || '__new__';
+    const n = (seqById.get(key) || 0) + 1;
+    seqById.set(key, n);
+    return n;
+  }
+  function errText(err) {
+    if (err == null) return 'unknown error';
+    if (typeof err === 'string') return err;
+    return err.message || String(err);
+  }
+  function alive(s) {
+    return !!(s && session && session.token === s.token);
+  }
+  function armUndo(p) {
+    undoPrompt = p;
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => { undoPrompt = null; }, 8000);
+  }
+  function setEditorState(text, tone) {
+    const el = $('editorState');
+    el.textContent = text || '';
+    el.dataset.tone = tone || '';
+  }
+  function fitArea(el) {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }
+  function fillPurposeList() {
+    const list = $('purposeList');
+    list.textContent = '';
+    [...new Set(prompts.map(p => p.purpose).filter(Boolean))].forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      list.append(opt);
+    });
+  }
+  function fillFields(p) {
+    $('fTitle').value = p ? (p.title || '') : '';
+    $('fPurpose').value = p ? (p.purpose || '') : '';
+    $('fBody').value = p ? (p.body || '') : '';
+    $('fNote').value = p ? (p.note || '') : '';
+    fitArea($('fBody'));
+    fitArea($('fNote'));
+    fillPurposeList();
+  }
+  function editorPayload(s) {
+    return {
+      id: s.id,
+      title: $('fTitle').value,
+      purpose: $('fPurpose').value,
+      note: $('fNote').value,
+      body: $('fBody').value,
+      source: s.source || '',
+      created: s.created,
+    };
+  }
+  function hideConflictBanner() {
+    $('conflict').hidden = true;
+    renderLegend();
+  }
+  // mode is changed, deleted, or blocked. Esc discards only while this is open.
+  function showConflictBanner(text, mode) {
+    $('conflictText').textContent = text;
+    $('keepMine').hidden = mode === 'blocked';
+    $('useTheirs').hidden = mode !== 'changed';
+    $('discardEdit').hidden = false;
+    $('conflict').hidden = false;
+    setEditorState(text, 'error');
+    renderLegend();
+    $('discardEdit').focus();
+  }
+  function onEditorInput() {
+    const s = session;
+    if (!s) return;
+    s.gen += 1;
+    s.dirty = true;
+    s.retries = 0;
+    if (s.conflict) return;
+    if (!$('conflict').hidden) hideConflictBanner();
+    setEditorState('Saving…');
+    clearTimeout(s.saveTimer);
+    s.saveTimer = setTimeout(() => { flushEditor(); }, 250);
+  }
+  async function deleteOrphan(prompt) {
+    try {
+      await window.pywebview.api.prompt_delete(prompt.id, prompt.rev);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  // No-op success when nothing changed since the last ack, so a hand edit on
+  // disk is not a false conflict. stale and a null result are retried.
+  async function sendSave(s) {
+    if (!alive(s)) return false;
+    if (s.conflict) {
+      const deleted = s.conflict.kind === 'deleted' || !s.conflict.prompt;
+      showConflictBanner(
+        deleted ? 'Deleted in another window.' : 'Changed in another window.',
+        deleted ? 'deleted' : 'changed',
+      );
+      return false;
+    }
+    if (!s.dirty) return true;
+    const gen = s.gen;
+    const body = $('fBody').value;
+    if (!body.trim()) {
+      if (!s.id) {
+        s.dirty = false;
+        setEditorState('');
+        return true;
+      }
+      showConflictBanner("Couldn't save. A prompt needs text.", 'blocked');
+      return false;
+    }
+    const sentId = s.id;
+    const seq = nextSeq(sentId);
+    setEditorState('Saving…');
+    let res;
+    try {
+      res = await window.pywebview.api.prompt_save(editorPayload(s), s.rev, seq);
+    } catch (err) {
+      console.error(err);
+      if (!alive(s)) return false;
+      showConflictBanner("Couldn't save. " + errText(err), 'blocked');
+      return false;
+    }
+    if (!alive(s)) {
+      if (!sentId && res && res.status === 'saved' && res.prompt) await deleteOrphan(res.prompt);
+      return false;
+    }
+    if (!res || res.status === 'stale') {
+      s.retries += 1;
+      if (s.retries > 4) {
+        showConflictBanner("Couldn't save. Your edit is still here.", 'blocked');
+        return false;
+      }
+      return sendSave(s);
+    }
+    s.retries = 0;
+    if (res.status === 'conflict') {
+      s.conflict = res;
+      s.dirty = true;
+      const deleted = res.kind === 'deleted' || !res.prompt;
+      showConflictBanner(
+        deleted ? 'Deleted in another window.' : 'Changed in another window.',
+        deleted ? 'deleted' : 'changed',
+      );
+      return false;
+    }
+    if ((res.status !== 'saved' && res.status !== 'unchanged') || !res.prompt) {
+      showConflictBanner("Couldn't save. Your edit is still here.", 'blocked');
+      return false;
+    }
+    if (!sentId) seqById.set(res.prompt.id, seq);
+    if (!alive(s)) {
+      if (!sentId) await deleteOrphan(res.prompt);
+      return false;
+    }
+    s.id = res.prompt.id;
+    s.rev = res.prompt.rev;
+    s.created = res.prompt.created || s.created;
+    s.source = res.prompt.source || '';
+    rememberPrompt(res.prompt);
+    if (s.gen !== gen) return sendSave(s);
+    s.dirty = false;
+    s.conflict = null;
+    hideConflictBanner();
+    setEditorState('Saved', 'ok');
+    return true;
+  }
+  function flushEditor() {
+    const s = session;
+    if (!s) return Promise.resolve(true);
+    clearTimeout(s.saveTimer);
+    const run = s.saveChain.then(() => sendSave(s));
+    s.saveChain = run.then(() => {}, () => {});
+    return run;
+  }
+  function openEditor(p, opts) {
+    opts = opts || {};
+    if (session) clearTimeout(session.saveTimer);
+    epoch += 1;
+    session = {
+      token: epoch,
+      id: p ? p.id : null,
+      rev: p ? p.rev : null,
+      source: p ? (p.source || '') : '',
+      created: p ? (p.created || null) : null,
+      dirty: false,
+      gen: 0,
+      retries: 0,
+      saveTimer: 0,
+      saveChain: Promise.resolve(),
+      conflict: null,
+    };
+    if (view === 'dictations' || view === 'prompts') queries[view] = q.value;
+    view = 'editor';
+    $('conflict').hidden = true;
+    fillFields(p);
+    applyChrome();
+    if (opts.already) setEditorState('Already saved', 'ok');
+    else if (p) setEditorState('Saved', 'ok');
+    else setEditorState('');
+    const focusEl = opts.focus === 'body' ? $('fBody') : $('fTitle');
+    focusEl.focus();
+    if (opts.select) focusEl.select();
+  }
+  function finishToPrompts(selectId) {
+    if (session) clearTimeout(session.saveTimer);
+    session = null;
+    epoch += 1;
+    view = 'prompts';
+    q.value = queries.prompts || '';
+    $('conflict').hidden = true;
+    if (selectId) { selId = selectId; followFirst = false; }
+    else { followFirst = true; selId = null; }
+    applyChrome();
+    renderPrompts();
+    q.focus();
+  }
+  async function leaveEditor() {
+    const s = session;
+    const ok = await flushEditor();
+    if (!ok || session !== s) return;
+    finishToPrompts(s && s.id);
+  }
+  async function showList(name) {
+    if (view === name) { q.focus(); return; }
+    if (view === 'editor') {
+      const s = session;
+      const ok = await flushEditor();
+      if (!ok || session !== s) return;
+      if (session) {
+        clearTimeout(session.saveTimer);
+        session = null;
+        epoch += 1;
+      }
+    }
+    if (view === 'dictations' || view === 'prompts') queries[view] = q.value;
+    view = name;
+    q.value = queries[name] || '';
+    applyChrome();
+    if (name === 'dictations') renderFeed(); else renderPrompts();
+    q.focus();
+  }
+  async function captureSelected() {
+    const e = shown[selIndex()];
+    if (!e) return;
+    const mark = epoch;
+    try {
+      const res = await window.pywebview.api.prompt_capture(e.timestamp || '', e.text || '');
+      if (!res || !res.prompt) {
+        setStatus("Couldn't save the prompt", 'error', STATUS_MS * 2);
+        return;
+      }
+      rememberPrompt(res.prompt);
+      if (epoch !== mark) return;
+      openEditor(res.prompt, { already: !res.created, select: true });
+    } catch (err) {
+      console.error(err);
+      setStatus("Couldn't save the prompt", 'error', STATUS_MS * 2);
+    }
+  }
+  function newPrompt() { openEditor(null, { focus: 'body' }); }
+  function editSelected() {
+    const p = promptShown[promptSelIndex()];
+    if (p) openEditor(p, { select: true });
+  }
+  async function deletePrompt(p, owner) {
+    if (!p) return;
+    try {
+      const res = await window.pywebview.api.prompt_delete(p.id, p.rev);
+      if (owner && !alive(owner)) return;
+      if (!res || res.status === 'conflict') {
+        if (res && res.status === 'conflict') {
+          setStatus('Changed in another window.', 'error', 4000);
+          if (res.prompt) rememberPrompt(res.prompt);
+          if (owner && alive(owner)) {
+            owner.conflict = res;
+            owner.dirty = true;
+            if (res.prompt) owner.rev = res.prompt.rev;
+            const deleted = res.kind === 'deleted' || !res.prompt;
+            showConflictBanner(
+              deleted ? 'Deleted in another window.' : 'Changed in another window.',
+              deleted ? 'deleted' : 'changed',
+            );
+          }
+          if (view === 'prompts') renderPrompts();
+        } else {
+          setStatus("Couldn't delete", 'error', STATUS_MS * 2);
+        }
+        return;
+      }
+      setStatus(`Deleted “${p.title || snippet(p.body || '', 40)}” · Ctrl Z to undo`, '', 8000);
+      armUndo(p);
+      forgetPrompt(p.id);
+      if (owner && alive(owner)) {
+        finishToPrompts(null);
+        return;
+      }
+      if (view === 'prompts') renderPrompts();
+    } catch (err) {
+      console.error(err);
+      if (owner && !alive(owner)) return;
+      setStatus("Couldn't delete", 'error', STATUS_MS * 2);
+    }
+  }
+  function deleteSelected() {
+    const p = promptShown[promptSelIndex()];
+    if (p) deletePrompt(p, null);
+  }
+  // Wait out this session's save, then delete at its ack rev. A draft with no
+  // id is thrown away, and a save that already started is deleted after it lands.
+  async function deleteEditor() {
+    const s = session;
+    if (!s) return;
+    clearTimeout(s.saveTimer);
+    await s.saveChain;
+    if (!alive(s)) return;
+    if (!s.id) {
+      discardEdit();
+      return;
+    }
+    await deletePrompt({
+      id: s.id,
+      title: $('fTitle').value,
+      purpose: $('fPurpose').value,
+      note: $('fNote').value,
+      body: $('fBody').value,
+      source: s.source || '',
+      created: s.created,
+      rev: s.rev,
+    }, s);
+  }
+  async function undoDelete() {
+    const p = undoPrompt;
+    if (!p) return;
+    undoPrompt = null;
+    clearTimeout(undoTimer);
+    try {
+      const res = await window.pywebview.api.prompt_save({
+        id: p.id, title: p.title || '', purpose: p.purpose || '', note: p.note || '',
+        body: p.body || '', source: p.source || '', created: p.created || null,
+      }, null, nextSeq(p.id));
+      if (res && (res.status === 'saved' || res.status === 'unchanged')) {
+        if (res.prompt) rememberPrompt(res.prompt);
+        setStatus('Restored', 'ok', STATUS_MS);
+        if (view === 'prompts') renderPrompts();
+      } else {
+        setStatus("Couldn't restore", 'error', STATUS_MS * 2);
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus("Couldn't restore", 'error', STATUS_MS * 2);
+    }
+  }
+  async function keepMine() {
+    const s = session;
+    if (!s || !s.conflict) return;
+    const res = s.conflict;
+    s.rev = res.kind === 'deleted' || !res.prompt ? null : res.prompt.rev;
+    s.conflict = null;
+    hideConflictBanner();
+    s.dirty = true;
+    s.gen += 1;
+    await flushEditor();
+  }
+  function useTheirs() {
+    const s = session;
+    const p = s && s.conflict && s.conflict.prompt;
+    if (!s || !p) return;
+    s.conflict = null;
+    fillFields(p);
+    s.id = p.id;
+    s.rev = p.rev;
+    s.source = p.source || '';
+    s.created = p.created || null;
+    s.dirty = false;
+    s.gen += 1;
+    rememberPrompt(p);
+    hideConflictBanner();
+    setEditorState('Saved', 'ok');
+  }
+  function discardEdit() {
+    if (session) clearTimeout(session.saveTimer);
+    session = null;
+    epoch += 1;
+    $('conflict').hidden = true;
+    view = 'prompts';
+    q.value = queries.prompts || '';
+    followFirst = true;
+    selId = null;
+    applyChrome();
+    renderPrompts();
+    q.focus();
+  }
+  async function copyEditor() {
+    const ok = await flushEditor();
+    if (!ok) return;
+    await copyText($('editorCopy'), $('fBody').value);
+  }
+
+  function applyChrome() {
+    document.body.dataset.view = view;
+    scroller.hidden = view !== 'dictations';
+    promptScroller.hidden = view !== 'prompts';
+    editorScroller.hidden = view !== 'editor';
+    searchLabel.hidden = view === 'editor';
+    if (view === 'editor') chips.hidden = true;
+    $('tabDict').setAttribute('aria-selected', String(view === 'dictations'));
+    $('tabProm').setAttribute('aria-selected', String(view === 'prompts' || view === 'editor'));
+    q.placeholder = view === 'prompts' ? 'Search prompts' : "Search everything you've said";
+    q.setAttribute('aria-label', view === 'prompts' ? 'Search prompts' : 'Search transcripts');
+    chips.setAttribute('aria-label', view === 'prompts' ? 'Filter by purpose' : 'Filter by app');
+    renderLegend();
+    renderPill();
+  }
+
+  // One table drives the key handler and the footer. A focused button is its own zone
+  // so Enter and Space keep activating it. Fields keep arrows, slashes, and typing.
+  const Z_LIST = ['search', 'list'];
+  const Z_ALL = ['search', 'field', 'button', 'list'];
+  const Z_NOT_FIELD = ['search', 'button', 'list'];
+  const V_LISTS = ['dictations', 'prompts'];
+  const V_ALL = ['dictations', 'prompts', 'editor'];
+  const BINDINGS = [
+    { keys: ['ctrl+1'], views: V_ALL, zones: Z_ALL, run: () => showList('dictations'), legend: ['Ctrl 1', 'dictations'] },
+    { keys: ['ctrl+2'], views: V_ALL, zones: Z_ALL, run: () => showList('prompts'), legend: ['Ctrl 2', 'prompts'] },
+    { keys: ['ctrl+f'], views: V_LISTS, zones: Z_NOT_FIELD, run: () => { q.focus(); q.select(); } },
+    { keys: ['/'], views: V_LISTS, zones: ['button', 'list'], run: () => { q.focus(); q.select(); } },
+    { keys: ['arrowdown', 'ctrl+j'], views: V_LISTS, zones: Z_LIST, run: () => (view === 'prompts' ? movePrompt(1) : moveSelection(1)), legend: ['↑↓', 'move'] },
+    { keys: ['arrowup', 'ctrl+k'], views: V_LISTS, zones: Z_LIST, run: () => (view === 'prompts' ? movePrompt(-1) : moveSelection(-1)) },
+    { keys: ['enter'], views: V_LISTS, zones: Z_LIST, run: () => (view === 'prompts' ? copyPrompt(false) : copySelected(false)), legend: ['Enter', 'copy'] },
+    { keys: ['shift+enter'], views: V_LISTS, zones: Z_LIST, run: () => (view === 'prompts' ? copyPrompt(true) : copySelected(true)), legend: ['⇧Enter', 'copy & close'] },
+    { keys: ['escape'], views: V_LISTS, zones: Z_ALL, run: () => dismiss(), legend: ['Esc', 'clear / close'] },
+    { keys: ['ctrl+s'], views: ['dictations'], zones: Z_ALL, run: () => captureSelected(), legend: ['Ctrl S', 'save prompt'] },
+    { keys: ['ctrl+n'], views: ['prompts'], zones: Z_NOT_FIELD, run: () => newPrompt(), legend: ['Ctrl N', 'new'] },
+    { keys: ['ctrl+e'], views: ['prompts'], zones: Z_NOT_FIELD, run: () => editSelected(), legend: ['Ctrl E', 'edit'] },
+    { keys: ['ctrl+delete'], views: ['prompts'], zones: ['list'], run: () => deleteSelected(), legend: ['Ctrl Del', 'delete'] },
+    { keys: ['ctrl+z'], views: ['prompts'], zones: ['list'], when: () => undoPrompt != null, run: () => undoDelete() },
+    { keys: ['escape'], views: ['editor'], zones: Z_ALL, run: () => ($('conflict').hidden ? leaveEditor() : discardEdit()), legend: ['Esc', 'back'] },
+    { keys: ['ctrl+s'], views: ['editor'], zones: Z_ALL, run: () => flushEditor(), legend: ['Ctrl S', 'save'] },
+    { keys: ['ctrl+enter'], views: ['editor'], zones: Z_ALL, run: () => copyEditor(), legend: ['Ctrl Enter', 'copy'] },
+  ];
+  function renderLegend() {
+    const keysEl = $('keys');
+    keysEl.textContent = '';
+    BINDINGS.forEach(binding => {
+      if (!binding.legend || !binding.views.includes(view)) return;
+      const li = document.createElement('li');
+      const kbd = document.createElement('kbd');
+      kbd.textContent = binding.legend[0];
+      let text = binding.legend[1];
+      if (view === 'editor' && binding.legend[0] === 'Esc' && !$('conflict').hidden) text = 'discard';
+      li.append(kbd, document.createTextNode(text));
+      keysEl.append(li);
+    });
+  }
+  function zoneOf(focus) {
+    if (focus === q) return 'search';
+    const tag = focus && focus.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return 'field';
+    if (tag === 'BUTTON' || (focus && focus.closest && focus.closest('button'))) return 'button';
+    return 'list';
+  }
+  function chordOf(ev) {
+    const key = ev.key.toLowerCase();
+    const ctrl = ev.ctrlKey && !ev.altKey && !ev.metaKey;
+    if (key === 'enter') return (ev.shiftKey ? 'shift+' : ctrl ? 'ctrl+' : '') + 'enter';
+    if (ctrl) return 'ctrl+' + key;
+    return key;
+  }
+
+  // The first title-bar close asks for this. Nothing dirty closes at once.
+  // A failed flush stays open and says why.
+  window.__flushAndClose = async () => {
+    try {
+      const needsFlush = view === 'editor' && session && (session.dirty || !$('conflict').hidden);
+      if (needsFlush) {
+        const ok = await flushEditor();
+        if (!ok) {
+          if ($('conflict').hidden && session) {
+            showConflictBanner("Couldn't save. Your edit is still here.", 'blocked');
+          }
+          return;
+        }
+      }
+      await window.pywebview.api.close();
+    } catch (err) {
+      console.error(err);
+      if (view === 'editor') setEditorState("Couldn't save. Your edit is still here.", 'error');
+    }
+  };
+
   // ── polling ──
   // A blip is silent; PAUSE_AFTER_FAILURES misses in a row show "Paused, reconnecting…".
-  async function poll() {
+  async function pollDictations() {
     try {
       const res = await window.pywebview.api.poll(sig);
       const wasPaused = isPaused();
       pollFailures = 0;
-      if (wasPaused) { showRestingStatus(); announce('Reconnected'); }
+      if (wasPaused && view === 'dictations') { showRestingStatus(); announce('Reconnected'); }
       if (res) {
         sig = res.sig;
         entries = withLabels(res.entries || []);
         const live = new Set(entries.map(keyOf));
-        for (const k of rowCache.keys()) if (!live.has(k)) rowCache.delete(k);  // rotated out
+        for (const k of rowCache.keys()) if (!live.has(k)) rowCache.delete(k);
         renderFeed();
       }
     } catch (err) {
       console.error(err);
       pollFailures++;
-      if (pollFailures === PAUSE_AFTER_FAILURES) { showRestingStatus(); announce('Paused, reconnecting'); }
-    } finally {
-      setTimeout(poll, POLL_MS);
+      if (pollFailures === PAUSE_AFTER_FAILURES && view === 'dictations') {
+        showRestingStatus(); announce('Paused, reconnecting');
+      }
     }
+  }
+  // A prompts-file error must say the library is unreadable, never that it is empty.
+  async function pollPrompts() {
+    try {
+      const res = await window.pywebview.api.prompts_poll(promptSig);
+      const wasBad = promptUnreadable;
+      promptUnreadable = false;
+      if (res) {
+        promptSig = res.sig;
+        prompts = res.prompts || [];
+        if (view === 'prompts') renderPrompts();
+        else if (view === 'editor') fillPurposeList();
+      } else if (wasBad && view === 'prompts') renderPrompts();
+      if (wasBad && view === 'prompts') showRestingStatus();
+    } catch (err) {
+      console.error(err);
+      promptUnreadable = true;
+      if (view === 'prompts') {
+        renderPrompts();
+        showRestingStatus();
+      }
+    }
+  }
+  async function poll() {
+    await pollDictations();
+    await pollPrompts();
+    setTimeout(poll, POLL_MS);
   }
 
   let searchTimer;
   q.addEventListener('input', () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(refresh, 90);
+    searchTimer = setTimeout(() => {
+      if (view === 'dictations' || view === 'prompts') queries[view] = q.value;
+      refresh();
+    }, 90);
   });
 
-  // Global keys. Enter only acts from search/body so a Tab-focused button keeps its own Enter.
   document.addEventListener('keydown', ev => {
-    const key = ev.key.toLowerCase(), focus = document.activeElement;
-    const ctrl = ev.ctrlKey && !ev.altKey && !ev.metaKey;
-    if ((ctrl && key === 'f') || (key === '/' && focus !== q)) {
-      ev.preventDefault(); q.focus(); q.select();
-    } else if (key === 'arrowdown' || (ctrl && key === 'j')) {
-      ev.preventDefault(); moveSelection(1);
-    } else if (key === 'arrowup' || (ctrl && key === 'k')) {
-      ev.preventDefault(); moveSelection(-1);
-    } else if (key === 'enter' && !ev.isComposing && (focus === q || focus === document.body)) {
-      ev.preventDefault(); copySelected(ev.shiftKey);
-    } else if (key === 'escape') {
-      ev.preventDefault(); dismiss();  // also stops the search box's native clear
-    } else if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey && focus === document.body) {
-      q.focus();  // typing after a row click goes back into search
+    const chord = chordOf(ev);
+    if (chord === 'ctrl+s' || chord === 'ctrl+p') ev.preventDefault();
+    if ((chord === 'enter' || chord === 'shift+enter') && ev.isComposing) return;
+    const z = zoneOf(document.activeElement);
+    const binding = BINDINGS.find(b => b.keys.includes(chord) && b.views.includes(view) && b.zones.includes(z) && (!b.when || b.when()));
+    if (binding) {
+      ev.preventDefault();
+      binding.run(ev);
+      return;
+    }
+    // Typing after a row click goes back into search. The character itself is not swallowed.
+    if (view !== 'editor' && z === 'list' && document.activeElement === document.body
+        && ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      q.focus();
     }
   });
+
+  $('tabDict').addEventListener('click', () => showList('dictations'));
+  $('tabProm').addEventListener('click', () => showList('prompts'));
+  $('editorBack').addEventListener('click', () => leaveEditor());
+  $('editorDone').addEventListener('click', () => leaveEditor());
+  $('editorCopy').addEventListener('click', () => copyEditor());
+  $('editorDelete').addEventListener('click', () => deleteEditor());
+  $('keepMine').addEventListener('click', () => keepMine());
+  $('useTheirs').addEventListener('click', () => useTheirs());
+  $('discardEdit').addEventListener('click', () => discardEdit());
+  ['fTitle', 'fPurpose', 'fBody', 'fNote'].forEach(id => {
+    $(id).addEventListener('input', () => {
+      if (id === 'fBody' || id === 'fNote') fitArea($(id));
+      onEditorInput();
+    });
+  });
+  $('editorCopy').innerHTML = ICON_COPY + '<span>Copy</span>';
+  applyChrome();
 
   window.addEventListener('pywebviewready', () => {
     q.focus();
     poll();
     window.pywebview.api.hotkey().then(h => {
       hotkey = h;
-      if (seen !== null && !entries.length) renderFeed();  // first-run hint already showing
+      if (seen !== null && !entries.length && view === 'dictations') renderFeed();
     }).catch(err => console.error(err));
   });
 })();
