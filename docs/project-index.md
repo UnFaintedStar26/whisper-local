@@ -31,7 +31,8 @@ Open-source fork of [PinW/whisper-key-local](https://github.com/PinW/whisper-key
 | **Log Bundler** | `bundle_logs.py` | `--bundle-logs` redacted diagnostic zip for bug reports | zipfile, re |
 | **Local API Server** | `local_server.py` | `--serve` OpenAI-compatible Whisper HTTP endpoint | http.server |
 | **Settings GUI** | `settings_ui.py` | `--settings` Tkinter settings editor with search | tkinter |
-| **Transcript History** | `history_window.py` + `transcript_log.py` | `--history` searchable journal of past transcriptions | tkinter, json |
+| **Transcript History** | `history_window.py` + `transcript_log.py` | `--history` searchable journal of past transcriptions | pywebview |
+| **Prompt Library** | `prompt_library.py` | Saved prompts (`prompts.yaml`) edited from Transcript History | ruamel.yaml |
 | **Hotkey Cheat Sheet** | `cheat_sheet.py` | Window listing currently configured hotkeys | tkinter |
 | **First-Run Welcome** | `first_run.py` | One-time onboarding window on first launch | tkinter |
 | **Level Overlay** | `level_overlay.py` | Floating level meter + streaming text pill | tkinter |

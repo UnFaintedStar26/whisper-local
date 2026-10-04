@@ -4,6 +4,9 @@ History inherited from upstream [`whisper-key-local`](https://github.com/PinW/wh
 
 ## [Unreleased]
 
+### Added
+- **Saved prompts in Transcript History.** Press Ctrl+2 in the history window for Prompts, or press Ctrl+S on a dictation to keep it. You can set a title, a purpose, and a note. The window writes `prompts.yaml` in the settings folder (`%APPDATA%\whisperkey` on Windows, `~/.whisperkey` on macOS). You can edit that file by hand. `--export-settings` and `--import-settings` include it.
+
 ## [0.15.0]
 
 ### Added
